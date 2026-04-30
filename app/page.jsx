@@ -18,7 +18,7 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
-// 🔥 Firebase
+// 🔥 Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyCQUkrs1QJFmbrAQqt_dRLmgHfU3Zp-c2Y",
   authDomain: "ink-mobile-5ee6a.firebaseapp.com",
@@ -37,6 +37,7 @@ export default function Page() {
   const [form, setForm] = useState({});
   const [file, setFile] = useState(null);
   const canvasRef = useRef(null);
+  const drawing = useRef(false);
 
   // 🔄 cargar datos
   useEffect(() => {
@@ -46,11 +47,10 @@ export default function Page() {
     return () => unsub();
   }, []);
 
-  // ✍️ firma funcional
+  // ✍️ firma táctil
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    let drawing = false;
 
     const getPos = (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -67,21 +67,21 @@ export default function Page() {
     };
 
     const start = (e) => {
-      drawing = true;
+      drawing.current = true;
       const pos = getPos(e);
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
     };
 
     const draw = (e) => {
-      if (!drawing) return;
+      if (!drawing.current) return;
       e.preventDefault();
       const pos = getPos(e);
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
     };
 
-    const stop = () => (drawing = false);
+    const stop = () => (drawing.current = false);
 
     canvas.addEventListener("mousedown", start);
     canvas.addEventListener("mousemove", draw);
@@ -92,41 +92,16 @@ export default function Page() {
     window.addEventListener("touchend", stop);
   }, []);
 
-  // 🖨 imprimir
-  const imprimir = (o) => {
-    const w = window.open("", "_blank");
-    if (!w) {
-      alert("Activa ventanas emergentes");
-      return;
-    }
-
-    w.document.write(`
-      <h2>Ink-Mobile</h2>
-      <p>CIF: E56261365</p>
-      <p>Calle Cruz Verde Nº22</p>
-      <p>Tel: 600 639 228</p>
-      <hr/>
-
-      <h3>Orden #${o.numero}</h3>
-      <p>${o.fecha} - ${o.hora}</p>
-
-      <p><b>Nombre:</b> ${o.nombre}</p>
-      <p><b>DNI:</b> ${o.dni}</p>
-      <p><b>Teléfono:</b> ${o.telefono}</p>
-      <p><b>Dispositivo:</b> ${o.dispositivo}</p>
-      <p><b>Problema:</b> ${o.problema}</p>
-      <p><b>Presupuesto:</b> ${o.presupuesto}€</p>
-
-      <img src="${o.firma}" width="200"/>
-
-      <script>window.onload = () => window.print()</script>
-    `);
-  };
-
-  // 💾 guardar + imprimir
+  // 💾 guardar + imprimir (SOLUCIÓN DEFINITIVA)
   const guardar = async () => {
     try {
-      console.log("CLICK");
+      // 🔥 abrir ventana primero (clave anti-bloqueo)
+      const w = window.open("", "_blank");
+
+      if (!w) {
+        alert("Activa ventanas emergentes en el navegador");
+        return;
+      }
 
       if (!form.nombre || !form.telefono) {
         alert("Faltan datos");
@@ -156,14 +131,51 @@ export default function Page() {
 
       await addDoc(collection(db, "ordenes"), nueva);
 
-      alert("Guardado correctamente");
+      // 🖨 imprimir
+      w.document.write(`
+        <html>
+        <body style="font-family:Arial;padding:20px">
+          <h2>Ink-Mobile</h2>
+          <p>CIF: E56261365</p>
+          <p>Calle Cruz Verde Nº22</p>
+          <p>Tel: 600 639 228</p>
+          <hr/>
 
-      // 👇 abrir ventana inmediatamente
-      imprimir(nueva);
+          <h3>Orden #${nueva.numero}</h3>
+          <p>${nueva.fecha} - ${nueva.hora}</p>
+
+          <p><b>Nombre:</b> ${nueva.nombre}</p>
+          <p><b>DNI:</b> ${nueva.dni || ""}</p>
+          <p><b>Teléfono:</b> ${nueva.telefono}</p>
+          <p><b>Dispositivo:</b> ${nueva.dispositivo}</p>
+          <p><b>Problema:</b> ${nueva.problema}</p>
+          <p><b>Presupuesto:</b> ${nueva.presupuesto}€</p>
+
+          <hr/>
+          <p><b>Firma:</b></p>
+          <img src="${nueva.firma}" width="200"/>
+
+          ${
+            nueva.foto
+              ? `<p><b>Estado:</b></p><img src="${nueva.foto}" width="200"/>`
+              : ""
+          }
+
+          <script>
+            window.onload = () => window.print();
+          </script>
+        </body>
+        </html>
+      `);
+
+      w.document.close();
+
+      alert("Guardado correctamente");
 
       // limpiar
       setForm({});
       setFile(null);
+
       const ctx = canvasRef.current.getContext("2d");
       ctx.clearRect(0, 0, 300, 120);
 
@@ -177,7 +189,6 @@ export default function Page() {
     <div style={{ padding: 20 }}>
       <h1>🔧 Ink-Mobile</h1>
 
-      {/* FORM */}
       <div style={{ background: "#eee", padding: 20 }}>
         <input placeholder="Nombre" onChange={e=>setForm({...form,nombre:e.target.value})}/>
         <input placeholder="DNI" onChange={e=>setForm({...form,dni:e.target.value})}/>
@@ -190,7 +201,12 @@ export default function Page() {
 
         <br/><br/>
 
-        <canvas ref={canvasRef} width={300} height={120} style={{border:"2px solid black"}} />
+        <canvas
+          ref={canvasRef}
+          width={300}
+          height={120}
+          style={{ border:"2px solid black", touchAction:"none" }}
+        />
 
         <br/><br/>
 

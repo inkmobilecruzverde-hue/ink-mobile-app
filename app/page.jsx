@@ -1,240 +1,179 @@
 "use client";
 
-import { useState, useEffect } from "react";
-
-// 🔥 FIREBASE
+import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import {
   getFirestore,
   collection,
   addDoc,
-  getDocs,
+  onSnapshot,
   updateDoc,
-  doc
+  doc,
 } from "firebase/firestore";
-
 import {
   getStorage,
   ref,
   uploadBytes,
-  getDownloadURL
+  getDownloadURL,
 } from "firebase/storage";
 
+// 🔥 FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyCQUkrs1QJFmbrAQqt_dRLmgHfU3Zp-c2Y",
   authDomain: "ink-mobile-5ee6a.firebaseapp.com",
   projectId: "ink-mobile-5ee6a",
   storageBucket: "ink-mobile-5ee6a.appspot.com",
   messagingSenderId: "174258192559",
-  appId: "1:174258192559:web:811e20b40c6c8199c945a"
+  appId: "1:174258192559:web:811e204b40c6c8199c945a",
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-export default function Home() {
+export default function Page() {
   const [ordenes, setOrdenes] = useState([]);
+  const [form, setForm] = useState({});
+  const [file, setFile] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [foto, setFoto] = useState(null);
+  const canvasRef = useRef(null);
 
-  const [form, setForm] = useState({
-    nombre: "",
-    dni: "",
-    telefono: "",
-    dispositivo: "",
-    codigo: "",
-    problema: "",
-    notas: "",
-    presupuesto: ""
-  });
-
-  // 📥 CARGAR
-  const cargar = async () => {
-    const snap = await getDocs(collection(db, "ordenes"));
-    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    setOrdenes(data);
-  };
-
+  // 🔄 CARGAR
   useEffect(() => {
-    cargar();
+    const unsub = onSnapshot(collection(db, "ordenes"), (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setOrdenes(data);
+    });
+    return () => unsub();
   }, []);
 
-  // 🔢 Nº ORDEN REAL
-  const siguienteNumero = () => {
-    if (ordenes.length === 0) return 1;
-    return Math.max(...ordenes.map(o => o.numero || 0)) + 1;
-  };
+  // 🧮 ESTADÍSTICAS
+  const totalFacturado = ordenes
+    .filter((o) => o.estado === "Finalizado")
+    .reduce((acc, o) => acc + Number(o.presupuesto || 0), 0);
+
+  const pendientes = ordenes.filter(o => o.estado !== "Finalizado").length;
+
+  // 🔍 FILTRO
+  const filtradas = ordenes.filter(
+    (o) =>
+      o.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+      o.telefono?.includes(busqueda)
+  );
+
+  // ✍️ FIRMA
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    let drawing = false;
+
+    const start = () => (drawing = true);
+    const end = () => (drawing = false);
+
+    const draw = (e) => {
+      if (!drawing) return;
+      const rect = canvas.getBoundingClientRect();
+      ctx.lineWidth = 2;
+      ctx.lineTo(
+        (e.clientX || e.touches?.[0].clientX) - rect.left,
+        (e.clientY || e.touches?.[0].clientY) - rect.top
+      );
+      ctx.stroke();
+    };
+
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mouseup", end);
+    canvas.addEventListener("mousemove", draw);
+  }, []);
 
   // 💾 GUARDAR
   const guardar = async () => {
-    let urlFoto = "";
+    let fotoURL = "";
 
-    if (foto) {
+    if (file) {
       const storageRef = ref(storage, "ordenes/" + Date.now());
-      await uploadBytes(storageRef, foto);
-      urlFoto = await getDownloadURL(storageRef);
+      await uploadBytes(storageRef, file);
+      fotoURL = await getDownloadURL(storageRef);
     }
 
-    const nueva = {
+    const firma = canvasRef.current.toDataURL();
+    const ahora = new Date();
+
+    await addDoc(collection(db, "ordenes"), {
       ...form,
-      numero: siguienteNumero(),
-      fecha: new Date().toISOString().split("T")[0],
+      foto: fotoURL,
+      firma,
+      fecha: ahora.toLocaleDateString(),
+      hora: ahora.toLocaleTimeString(),
+      numero: Date.now(),
       estado: "Recibido",
-      foto: urlFoto
-    };
-
-    await addDoc(collection(db, "ordenes"), nueva);
-    cargar();
-    imprimir(nueva);
-
-    setForm({
-      nombre: "",
-      dni: "",
-      telefono: "",
-      dispositivo: "",
-      codigo: "",
-      problema: "",
-      notas: "",
-      presupuesto: ""
     });
 
-    setFoto(null);
+    alert("Orden guardada");
   };
 
   // 🔄 CAMBIAR ESTADO
   const cambiarEstado = async (id, estado) => {
     await updateDoc(doc(db, "ordenes", id), { estado });
-    cargar();
-  };
-
-  // 🧾 IMPRIMIR
-  const imprimir = (o) => {
-    const w = window.open("", "_blank");
-
-    w.document.write(`
-      <style>
-        body{font-family:Arial;padding:20px}
-        h2{text-align:center}
-      </style>
-
-      <h2>INK-MOBILE</h2>
-      <p>CIF: E56261365</p>
-      <p>Calle Cruz Verde Nº22</p>
-      <p>Tel: 600 639 228</p>
-      <hr/>
-      <p><b>Orden:</b> ${o.numero}</p>
-      <p><b>Fecha:</b> ${o.fecha}</p>
-      <p><b>Cliente:</b> ${o.nombre}</p>
-      <p><b>Tel:</b> ${o.telefono}</p>
-      <p><b>Equipo:</b> ${o.dispositivo}</p>
-      <p><b>Problema:</b> ${o.problema}</p>
-      <p><b>Presupuesto:</b> ${o.presupuesto}€</p>
-    `);
-
-    w.print();
-  };
-
-  // 🔍 FILTRO
-  const filtradas = ordenes.filter(o =>
-    o.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-    o.telefono?.includes(busqueda)
-  );
-
-  // 🎨 COLOR
-  const colorEstado = (estado) => {
-    if (estado === "Recibido") return "#3498db";
-    if (estado === "Pendiente") return "#f39c12";
-    if (estado === "Pendiente de recambio") return "#9b59b6";
-    if (estado === "Finalizado") return "#2ecc71";
   };
 
   return (
-    <div style={{ background: "#eef2f7", minHeight: "100vh", padding: 20 }}>
+    <div style={{ padding: 20 }}>
+      <h1>🏪 Ink-Mobile</h1>
 
-      <h1>🔧 Ink-Mobile</h1>
-
-      {/* FORM */}
-      <div style={{ background: "#fff", padding: 20, borderRadius: 10, marginBottom: 20 }}>
-        <h2>Nueva orden</h2>
-
-        {Object.keys(form).map(k => (
-          <input
-            key={k}
-            placeholder={k}
-            value={form[k]}
-            onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-            style={{ width: "100%", marginBottom: 10, padding: 10 }}
-          />
-        ))}
-
-        {/* FOTO */}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setFoto(e.target.files[0])}
-        />
-
-        <button
-          onClick={guardar}
-          style={{
-            marginTop: 15,
-            padding: 12,
-            width: "100%",
-            background: "black",
-            color: "white",
-            borderRadius: 8
-          }}
-        >
-          Guardar + imprimir
-        </button>
+      {/* 📊 PANEL */}
+      <div style={{ display: "flex", gap: 20 }}>
+        <div>💰 Facturado: {totalFacturado}€</div>
+        <div>📦 Pendientes: {pendientes}</div>
+        <div>📄 Total órdenes: {ordenes.length}</div>
       </div>
 
-      {/* BUSCAR */}
+      <br />
+
+      {/* 🔍 BUSCADOR */}
       <input
-        placeholder="Buscar cliente o teléfono"
-        value={busqueda}
+        placeholder="Buscar cliente..."
         onChange={(e) => setBusqueda(e.target.value)}
-        style={{ width: "100%", padding: 10, marginBottom: 20 }}
       />
 
-      {/* COLUMNAS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-        {["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"].map(estado => (
-          <div key={estado} style={{ background: "#fff", padding: 10, borderRadius: 10 }}>
-            <h3 style={{ color: colorEstado(estado) }}>{estado}</h3>
+      <br /><br />
 
-            {filtradas
-              .filter(o => o.estado === estado)
-              .map(o => (
-                <div key={o.id} style={{ borderBottom: "1px solid #ddd", padding: 8 }}>
-                  <b>#{o.numero}</b><br />
-                  {o.nombre}<br />
-                  {o.dispositivo}
+      {/* FORM */}
+      <div style={{ background: "#eee", padding: 20 }}>
+        <input name="nombre" placeholder="Nombre" onChange={(e)=>setForm({...form,nombre:e.target.value})}/>
+        <input name="telefono" placeholder="Teléfono" onChange={(e)=>setForm({...form,telefono:e.target.value})}/>
+        <input name="dispositivo" placeholder="Dispositivo" onChange={(e)=>setForm({...form,dispositivo:e.target.value})}/>
+        <input name="problema" placeholder="Problema" onChange={(e)=>setForm({...form,problema:e.target.value})}/>
+        <input name="presupuesto" placeholder="€" onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
 
-                  {o.foto && (
-                    <img
-                      src={o.foto}
-                      style={{ width: "100%", marginTop: 5, borderRadius: 6 }}
-                    />
-                  )}
+        <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
 
-                  <select
-                    value={o.estado}
-                    onChange={(e) => cambiarEstado(o.id, e.target.value)}
-                    style={{ width: "100%", marginTop: 5 }}
-                  >
-                    <option>Recibido</option>
-                    <option>Pendiente</option>
-                    <option>Pendiente de recambio</option>
-                    <option>Finalizado</option>
-                  </select>
-                </div>
-              ))}
-          </div>
-        ))}
+        <canvas ref={canvasRef} width={300} height={100} style={{border:"1px solid black"}} />
+
+        <button onClick={guardar}>Guardar</button>
       </div>
 
+      <h2>Órdenes</h2>
+
+      {filtradas.map(o=>(
+        <div key={o.id} style={{border:"1px solid #ccc",margin:10,padding:10}}>
+          <b>#{o.numero}</b> - {o.nombre} - {o.dispositivo}
+          <br/>
+          💰 {o.presupuesto}€
+          <br/>
+
+          <select value={o.estado} onChange={(e)=>cambiarEstado(o.id,e.target.value)}>
+            <option>Recibido</option>
+            <option>Pendiente</option>
+            <option>Finalizado</option>
+          </select>
+        </div>
+      ))}
     </div>
   );
 }

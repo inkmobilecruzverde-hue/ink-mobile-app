@@ -35,9 +35,7 @@ export default function Page() {
   const [ordenes, setOrdenes] = useState([]);
   const [form, setForm] = useState({});
   const [file, setFile] = useState(null);
-  const [ordenImprimir, setOrdenImprimir] = useState(null);
-  const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
-  const [editId, setEditId] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
   const canvasRef = useRef(null);
 
   const columnas = ["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"];
@@ -49,214 +47,95 @@ export default function Page() {
     return () => unsub();
   }, []);
 
-  // FIRMA
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    let drawing = false;
+  // 💰 ESTADÍSTICAS
+  const total = ordenes.reduce((acc, o) => acc + Number(o.presupuesto || 0), 0);
+  const finalizados = ordenes.filter(o => o.estado === "Finalizado")
+    .reduce((acc, o) => acc + Number(o.presupuesto || 0), 0);
+  const pendientes = ordenes.filter(o => o.estado !== "Finalizado")
+    .reduce((acc, o) => acc + Number(o.presupuesto || 0), 0);
 
-    const getPos = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      if (e.touches) {
-        return {
-          x: e.touches[0].clientX - rect.left,
-          y: e.touches[0].clientY - rect.top,
-        };
-      }
-      return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      };
-    };
+  // 🔍 BUSCADOR
+  const filtradas = ordenes.filter(o =>
+    o.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+    o.telefono?.includes(busqueda)
+  );
 
-    const start = (e) => {
-      drawing = true;
-      const pos = getPos(e);
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    };
-
-    const draw = (e) => {
-      if (!drawing) return;
-      e.preventDefault();
-      const pos = getPos(e);
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
-    };
-
-    const stop = () => (drawing = false);
-
-    canvas.addEventListener("mousedown", start);
-    canvas.addEventListener("mousemove", draw);
-    window.addEventListener("mouseup", stop);
-
-    canvas.addEventListener("touchstart", start);
-    canvas.addEventListener("touchmove", draw);
-    window.addEventListener("touchend", stop);
-  }, []);
-
-  // GUARDAR + IMPRIMIR
+  // 💾 GUARDAR
   const guardar = async () => {
-    try {
-      let fotoURL = "";
+    let fotoURL = "";
 
-      if (file) {
-        const storageRef = ref(storage, "ordenes/" + Date.now());
-        await uploadBytes(storageRef, file);
-        fotoURL = await getDownloadURL(storageRef);
-      }
-
-      const firma = canvasRef.current.toDataURL();
-      const ahora = new Date();
-
-      const data = {
-        ...form,
-        foto: fotoURL,
-        firma,
-        fecha: ahora.toLocaleDateString(),
-        hora: ahora.toLocaleTimeString(),
-        numero: editId ? form.numero : Date.now(),
-        estado: form.estado || "Recibido",
-      };
-
-      if (editId) {
-        await updateDoc(doc(db, "ordenes", editId), data);
-        setEditId(null);
-      } else {
-        await addDoc(collection(db, "ordenes"), data);
-      }
-
-      setOrdenImprimir(data);
-      setTimeout(() => window.print(), 200);
-
-      setForm({});
-      setFile(null);
-      canvasRef.current.getContext("2d").clearRect(0, 0, 300, 120);
-
-    } catch (e) {
-      alert("Error");
+    if (file) {
+      const storageRef = ref(storage, "ordenes/" + Date.now());
+      await uploadBytes(storageRef, file);
+      fotoURL = await getDownloadURL(storageRef);
     }
-  };
 
-  const editar = (o) => {
-    setForm(o);
-    setEditId(o.id);
-  };
+    const firma = canvasRef.current.toDataURL();
+    const ahora = new Date();
 
-  const eliminar = async (id) => {
-    if (confirm("¿Eliminar?")) {
-      await deleteDoc(doc(db, "ordenes", id));
-    }
-  };
+    const nueva = {
+      ...form,
+      foto: fotoURL,
+      firma,
+      fecha: ahora.toLocaleDateString(),
+      hora: ahora.toLocaleTimeString(),
+      numero: Date.now(),
+      estado: "Recibido",
+    };
 
-  const cambiarEstado = async (id, estado) => {
-    await updateDoc(doc(db, "ordenes", id), { estado });
-  };
+    await addDoc(collection(db, "ordenes"), nueva);
 
-  const enviarWhatsApp = (o) => {
-    const msg = `📱 Ink-Mobile
-Orden #${o.numero}
-Cliente: ${o.nombre}
-Equipo: ${o.dispositivo}
-Estado: ${o.estado}`;
-
-    window.open(`https://wa.me/34${o.telefono}?text=${encodeURIComponent(msg)}`);
+    setForm({});
   };
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>🔧 Ink-Mobile</h1>
+      <h1>🏪 Ink-Mobile</h1>
+
+      {/* 💰 PANEL */}
+      <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
+        <div>💰 Total: {total}€</div>
+        <div>✅ Finalizado: {finalizados}€</div>
+        <div>⏳ Pendiente: {pendientes}€</div>
+      </div>
+
+      {/* 🔍 BUSCADOR */}
+      <input
+        placeholder="Buscar cliente..."
+        onChange={(e) => setBusqueda(e.target.value)}
+      />
+
+      <br/><br/>
 
       {/* FORM */}
       <div style={{ background: "#eee", padding: 20 }}>
-        <input placeholder="Nombre" value={form.nombre || ""} onChange={e=>setForm({...form,nombre:e.target.value})}/>
-        <input placeholder="DNI" value={form.dni || ""} onChange={e=>setForm({...form,dni:e.target.value})}/>
-        <input placeholder="Teléfono" value={form.telefono || ""} onChange={e=>setForm({...form,telefono:e.target.value})}/>
-        <input placeholder="Dispositivo" value={form.dispositivo || ""} onChange={e=>setForm({...form,dispositivo:e.target.value})}/>
-        <input placeholder="Problema" value={form.problema || ""} onChange={e=>setForm({...form,problema:e.target.value})}/>
-        <input placeholder="Presupuesto" value={form.presupuesto || ""} onChange={e=>setForm({...form,presupuesto:e.target.value})}/>
+        <input placeholder="Nombre" onChange={e=>setForm({...form,nombre:e.target.value})}/>
+        <input placeholder="Teléfono" onChange={e=>setForm({...form,telefono:e.target.value})}/>
+        <input placeholder="Dispositivo" onChange={e=>setForm({...form,dispositivo:e.target.value})}/>
+        <input placeholder="Problema" onChange={e=>setForm({...form,problema:e.target.value})}/>
+        <input placeholder="€" onChange={e=>setForm({...form,presupuesto:e.target.value})}/>
 
-        <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
+        <canvas ref={canvasRef} width={300} height={100} style={{border:"1px solid black"}} />
 
-        <canvas ref={canvasRef} width={300} height={120} style={{ border:"2px solid black", touchAction:"none" }}/>
-
-        <br/><br/>
-
-        <button onClick={guardar}>
-          {editId ? "Actualizar + imprimir" : "Guardar + imprimir"}
-        </button>
+        <button onClick={guardar}>Guardar</button>
       </div>
 
       {/* COLUMNAS */}
       <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
         {columnas.map(col => (
-          <div key={col} style={{ flex: 1, background: "#f5f5f5", padding: 10 }}>
-            <h3>{col}</h3>
+          <div key={col} style={{ flex: 1 }}>
+            <h3>{col} ({ordenes.filter(o=>o.estado===col).length})</h3>
 
-            {ordenes.filter(o=>o.estado===col).map(o=>(
-              <div key={o.id} style={{ background:"#fff", marginBottom:10, padding:10 }}>
-                <b>#{o.numero}</b><br/>
+            {filtradas.filter(o=>o.estado===col).map(o=>(
+              <div key={o.id} style={{ border:"1px solid #ccc", margin:5, padding:5 }}>
+                #{o.numero}<br/>
                 {o.nombre}<br/>
-                {o.dispositivo}
-
-                <br/><br/>
-
-                <button onClick={()=>setOrdenSeleccionada(o)}>Ver</button>
-                <button onClick={()=>editar(o)}>Editar</button>
-                <button onClick={()=>eliminar(o.id)}>Eliminar</button>
-                <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
-
-                <br/><br/>
-
-                <select value={o.estado} onChange={(e)=>cambiarEstado(o.id,e.target.value)}>
-                  {columnas.map(c=><option key={c}>{c}</option>)}
-                </select>
+                💰 {o.presupuesto}€
               </div>
             ))}
           </div>
         ))}
       </div>
-
-      {/* DETALLE */}
-      {ordenSeleccionada && (
-        <div style={{
-          position:"fixed",top:0,left:0,width:"100%",height:"100%",
-          background:"rgba(0,0,0,0.6)"
-        }}>
-          <div style={{ background:"#fff", padding:20, margin:"5% auto", width:400 }}>
-            <h3>Orden #{ordenSeleccionada.numero}</h3>
-
-            <p>{ordenSeleccionada.nombre}</p>
-            <p>{ordenSeleccionada.telefono}</p>
-            <p>{ordenSeleccionada.dispositivo}</p>
-            <p>{ordenSeleccionada.problema}</p>
-
-            {ordenSeleccionada.foto && <img src={ordenSeleccionada.foto} width="100%" />}
-            <img src={ordenSeleccionada.firma} width="100%" />
-
-            <button onClick={()=>setOrdenSeleccionada(null)}>Cerrar</button>
-          </div>
-        </div>
-      )}
-
-      {/* PRINT */}
-      {ordenImprimir && (
-        <div className="print">
-          <h2>Ink-Mobile</h2>
-          <p>{ordenImprimir.nombre}</p>
-          <p>{ordenImprimir.dispositivo}</p>
-          <p>{ordenImprimir.problema}</p>
-          <img src={ordenImprimir.firma} width="200"/>
-        </div>
-      )}
-
-      <style>{`
-        @media print {
-          body * { visibility:hidden }
-          .print, .print * { visibility:visible }
-          .print { position:absolute; top:0 }
-        }
-      `}</style>
     </div>
   );
 }

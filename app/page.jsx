@@ -13,6 +13,13 @@ import {
   doc
 } from "firebase/firestore";
 
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from "firebase/storage";
+
 const firebaseConfig = {
   apiKey: "AIzaSyCQUkrs1QJFmbrAQqt_dRLmgHfU3Zp-c2Y",
   authDomain: "ink-mobile-5ee6a.firebaseapp.com",
@@ -24,10 +31,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 export default function Home() {
   const [ordenes, setOrdenes] = useState([]);
   const [busqueda, setBusqueda] = useState("");
+  const [foto, setFoto] = useState(null);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -51,7 +60,7 @@ export default function Home() {
     cargar();
   }, []);
 
-  // 🔢 NUMERO ORDEN REAL
+  // 🔢 Nº ORDEN REAL
   const siguienteNumero = () => {
     if (ordenes.length === 0) return 1;
     return Math.max(...ordenes.map(o => o.numero || 0)) + 1;
@@ -59,11 +68,20 @@ export default function Home() {
 
   // 💾 GUARDAR
   const guardar = async () => {
+    let urlFoto = "";
+
+    if (foto) {
+      const storageRef = ref(storage, "ordenes/" + Date.now());
+      await uploadBytes(storageRef, foto);
+      urlFoto = await getDownloadURL(storageRef);
+    }
+
     const nueva = {
       ...form,
       numero: siguienteNumero(),
       fecha: new Date().toISOString().split("T")[0],
-      estado: "Recibido"
+      estado: "Recibido",
+      foto: urlFoto
     };
 
     await addDoc(collection(db, "ordenes"), nueva);
@@ -80,6 +98,8 @@ export default function Home() {
       notas: "",
       presupuesto: ""
     });
+
+    setFoto(null);
   };
 
   // 🔄 CAMBIAR ESTADO
@@ -88,14 +108,14 @@ export default function Home() {
     cargar();
   };
 
-  // 🧾 TICKET PRO
+  // 🧾 IMPRIMIR
   const imprimir = (o) => {
     const w = window.open("", "_blank");
+
     w.document.write(`
       <style>
         body{font-family:Arial;padding:20px}
         h2{text-align:center}
-        hr{margin:10px 0}
       </style>
 
       <h2>INK-MOBILE</h2>
@@ -106,13 +126,12 @@ export default function Home() {
       <p><b>Orden:</b> ${o.numero}</p>
       <p><b>Fecha:</b> ${o.fecha}</p>
       <p><b>Cliente:</b> ${o.nombre}</p>
-      <p><b>Teléfono:</b> ${o.telefono}</p>
+      <p><b>Tel:</b> ${o.telefono}</p>
       <p><b>Equipo:</b> ${o.dispositivo}</p>
       <p><b>Problema:</b> ${o.problema}</p>
       <p><b>Presupuesto:</b> ${o.presupuesto}€</p>
-      <hr/>
-      <p>Firma cliente:</p>
     `);
+
     w.print();
   };
 
@@ -122,7 +141,7 @@ export default function Home() {
     o.telefono?.includes(busqueda)
   );
 
-  // 🎨 COLORES ESTADO
+  // 🎨 COLOR
   const colorEstado = (estado) => {
     if (estado === "Recibido") return "#3498db";
     if (estado === "Pendiente") return "#f39c12";
@@ -139,17 +158,22 @@ export default function Home() {
       <div style={{ background: "#fff", padding: 20, borderRadius: 10, marginBottom: 20 }}>
         <h2>Nueva orden</h2>
 
-        <div style={{ display: "grid", gap: 10 }}>
-          {Object.keys(form).map(k => (
-            <input
-              key={k}
-              placeholder={k}
-              value={form[k]}
-              onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-              style={{ padding: 10, borderRadius: 6, border: "1px solid #ccc" }}
-            />
-          ))}
-        </div>
+        {Object.keys(form).map(k => (
+          <input
+            key={k}
+            placeholder={k}
+            value={form[k]}
+            onChange={(e) => setForm({ ...form, [k]: e.target.value })}
+            style={{ width: "100%", marginBottom: 10, padding: 10 }}
+          />
+        ))}
+
+        {/* FOTO */}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setFoto(e.target.files[0])}
+        />
 
         <button
           onClick={guardar}
@@ -187,6 +211,13 @@ export default function Home() {
                   <b>#{o.numero}</b><br />
                   {o.nombre}<br />
                   {o.dispositivo}
+
+                  {o.foto && (
+                    <img
+                      src={o.foto}
+                      style={{ width: "100%", marginTop: 5, borderRadius: 6 }}
+                    />
+                  )}
 
                   <select
                     value={o.estado}

@@ -11,9 +11,8 @@ import {
   doc,
 } from "firebase/firestore";
 
-// 🔥 TU FIREBASE
 const firebaseConfig = {
-  apiKey: "AIzaSy...",
+  apiKey: "AIzaSyCQUkrs1QJFmbrAQqt_dRLmgHfU3Zp-c2Y",
   authDomain: "ink-mobile-5ee6a.firebaseapp.com",
   projectId: "ink-mobile-5ee6a",
   storageBucket: "ink-mobile-5ee6a.appspot.com",
@@ -33,8 +32,8 @@ export default function Home() {
   }, []);
 
   const cargarOrdenes = async () => {
-    const querySnapshot = await getDocs(collection(db, "ordenes"));
-    const data = querySnapshot.docs.map((doc) => ({
+    const snapshot = await getDocs(collection(db, "ordenes"));
+    const data = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
@@ -46,87 +45,22 @@ export default function Home() {
   };
 
   const guardarOrden = async () => {
-    const nuevaOrden = {
+    const nueva = {
       ...form,
       numero: Date.now(),
       fecha: new Date().toISOString().split("T")[0],
       estado: "Recibido",
     };
 
-    await addDoc(collection(db, "ordenes"), nuevaOrden);
+    await addDoc(collection(db, "ordenes"), nueva);
     setForm({});
     cargarOrdenes();
   };
 
   const cambiarEstado = async (id, estado) => {
-    const ref = doc(db, "ordenes", id);
-    await updateDoc(ref, { estado });
+    await updateDoc(doc(db, "ordenes", id), { estado });
     cargarOrdenes();
   };
-
-  const imprimir = (o) => {
-    const win = window.open("", "_blank");
-
-    win.document.write(`
-      <h2>Ink-Mobile</h2>
-      <p>CIF: E56261365</p>
-      <p>Calle Cruz Verde Nº22</p>
-      <p>Tel: 600 639 228</p>
-      <hr/>
-      <p><b>Nº Orden:</b> ${o.numero}</p>
-      <p><b>Fecha:</b> ${o.fecha}</p>
-      <p><b>Nombre:</b> ${o.nombre}</p>
-      <p><b>Teléfono:</b> ${o.telefono}</p>
-      <p><b>Dispositivo:</b> ${o.dispositivo}</p>
-      <p><b>Problema:</b> ${o.problema}</p>
-      <p><b>Presupuesto:</b> ${o.presupuesto}</p>
-    `);
-
-    win.print();
-  };
-
-  const renderTabla = (estado) => (
-    <div>
-      <h3>{estado}</h3>
-      <table border="1">
-        <thead>
-          <tr>
-            <th>Nº</th>
-            <th>Fecha</th>
-            <th>Nombre</th>
-            <th>Dispositivo</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ordenes
-            .filter((o) => o.estado === estado)
-            .map((o) => (
-              <tr key={o.id}>
-                <td>{o.numero}</td>
-                <td>{o.fecha}</td>
-                <td>{o.nombre}</td>
-                <td>{o.dispositivo}</td>
-                <td>
-                  <select
-                    value={o.estado}
-                    onChange={(e) =>
-                      cambiarEstado(o.id, e.target.value)
-                    }
-                  >
-                    <option>Recibido</option>
-                    <option>Pendiente</option>
-                    <option>Pendiente de recambio</option>
-                    <option>Finalizado</option>
-                  </select>
-                  <button onClick={() => imprimir(o)}>🖨️</button>
-                </td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-    </div>
-  );
 
   return (
     <div style={{ padding: 20 }}>
@@ -144,14 +78,46 @@ export default function Home() {
       <input name="presupuesto" placeholder="Presupuesto" onChange={handleChange} />
 
       <br /><br />
-      <button onClick={guardarOrden}>💾 Guardar orden</button>
+      <button onClick={guardarOrden}>Guardar orden</button>
 
       <hr />
 
-      {renderTabla("Recibido")}
-      {renderTabla("Pendiente")}
-      {renderTabla("Pendiente de recambio")}
-      {renderTabla("Finalizado")}
+      <h2>Órdenes</h2>
+
+      <table border="1">
+        <thead>
+          <tr>
+            <th>Nº</th>
+            <th>Fecha</th>
+            <th>Nombre</th>
+            <th>Dispositivo</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordenes.map((o) => (
+            <tr key={o.id}>
+              <td>{o.numero}</td>
+              <td>{o.fecha}</td>
+              <td>{o.nombre}</td>
+              <td>{o.dispositivo}</td>
+              <td>
+                <select
+                  value={o.estado}
+                  onChange={(e) =>
+                    cambiarEstado(o.id, e.target.value)
+                  }
+                >
+                  <option>Recibido</option>
+                  <option>Pendiente</option>
+                  <option>Pendiente de recambio</option>
+                  <option>Finalizado</option>
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

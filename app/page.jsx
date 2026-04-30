@@ -18,6 +18,7 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
+// 🔥 Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyCQUkrs1QJFmbrAQqt_dRLmgHfU3Zp-c2Y",
   authDomain: "ink-mobile-5ee6a.firebaseapp.com",
@@ -34,23 +35,22 @@ const storage = getStorage(app);
 export default function Page() {
   const [ordenes, setOrdenes] = useState([]);
   const [form, setForm] = useState({});
-  const [editId, setEditId] = useState(null);
   const [file, setFile] = useState(null);
-  const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
   const canvasRef = useRef(null);
-  const drawing = useRef(false);
 
+  // 🔄 cargar datos
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "ordenes"), (snapshot) => {
-      setOrdenes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setOrdenes(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, []);
 
-  // ✍️ FIRMA FUNCIONAL
+  // ✍️ firma funcional
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
+    let drawing = false;
 
     const getPos = (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -67,23 +67,21 @@ export default function Page() {
     };
 
     const start = (e) => {
-      drawing.current = true;
+      drawing = true;
       const pos = getPos(e);
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
     };
 
     const draw = (e) => {
-      if (!drawing.current) return;
+      if (!drawing) return;
       e.preventDefault();
       const pos = getPos(e);
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
     };
 
-    const stop = () => {
-      drawing.current = false;
-    };
+    const stop = () => (drawing = false);
 
     canvas.addEventListener("mousedown", start);
     canvas.addEventListener("mousemove", draw);
@@ -92,20 +90,15 @@ export default function Page() {
     canvas.addEventListener("touchstart", start);
     canvas.addEventListener("touchmove", draw);
     window.addEventListener("touchend", stop);
-
-    return () => {
-      canvas.removeEventListener("mousedown", start);
-      canvas.removeEventListener("mousemove", draw);
-      window.removeEventListener("mouseup", stop);
-
-      canvas.removeEventListener("touchstart", start);
-      canvas.removeEventListener("touchmove", draw);
-      window.removeEventListener("touchend", stop);
-    };
   }, []);
 
-  const imprimirTicket = (o) => {
+  // 🖨 imprimir
+  const imprimir = (o) => {
     const w = window.open("", "_blank");
+    if (!w) {
+      alert("Activa ventanas emergentes");
+      return;
+    }
 
     w.document.write(`
       <h2>Ink-Mobile</h2>
@@ -117,40 +110,30 @@ export default function Page() {
       <h3>Orden #${o.numero}</h3>
       <p>${o.fecha} - ${o.hora}</p>
 
-      <p><b>Cliente:</b> ${o.nombre}</p>
+      <p><b>Nombre:</b> ${o.nombre}</p>
+      <p><b>DNI:</b> ${o.dni}</p>
       <p><b>Teléfono:</b> ${o.telefono}</p>
       <p><b>Dispositivo:</b> ${o.dispositivo}</p>
       <p><b>Problema:</b> ${o.problema}</p>
       <p><b>Presupuesto:</b> ${o.presupuesto}€</p>
 
-      <hr/>
-
-      <p><b>Firma:</b></p>
       <img src="${o.firma}" width="200"/>
 
-      ${
-        o.foto
-          ? `<p><b>Estado del dispositivo:</b></p>
-             <img src="${o.foto}" width="200"/>`
-          : ""
-      }
-
-      <script>
-        window.onload = () => window.print();
-      </script>
+      <script>window.onload = () => window.print()</script>
     `);
-
-    w.document.close();
   };
 
+  // 💾 guardar + imprimir
   const guardar = async () => {
     try {
+      console.log("CLICK");
+
       if (!form.nombre || !form.telefono) {
         alert("Faltan datos");
         return;
       }
 
-      let fotoURL = form.foto || "";
+      let fotoURL = "";
 
       if (file) {
         const storageRef = ref(storage, "ordenes/" + Date.now());
@@ -161,154 +144,60 @@ export default function Page() {
       const firma = canvasRef.current.toDataURL();
       const ahora = new Date();
 
-      const data = {
+      const nueva = {
         ...form,
         foto: fotoURL,
         firma,
         fecha: ahora.toLocaleDateString(),
         hora: ahora.toLocaleTimeString(),
+        numero: Date.now(),
+        estado: "Recibido",
       };
 
-      let ordenFinal;
+      await addDoc(collection(db, "ordenes"), nueva);
 
-      if (editId) {
-        await updateDoc(doc(db, "ordenes", editId), data);
-        ordenFinal = { ...data, numero: form.numero };
-        setEditId(null);
-      } else {
-        const numero = Date.now();
-        ordenFinal = { ...data, numero };
+      alert("Guardado correctamente");
 
-        await addDoc(collection(db, "ordenes"), {
-          ...ordenFinal,
-          estado: "Recibido",
-        });
-      }
+      // 👇 abrir ventana inmediatamente
+      imprimir(nueva);
 
+      // limpiar
       setForm({});
       setFile(null);
-
-      // limpiar firma
       const ctx = canvasRef.current.getContext("2d");
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      ctx.clearRect(0, 0, 300, 120);
 
-      alert("Orden guardada");
-
-      setTimeout(() => imprimirTicket(ordenFinal), 300);
-
-    } catch (error) {
-      console.error(error);
-      alert("Error al guardar");
+    } catch (e) {
+      console.error(e);
+      alert("Error: " + e.message);
     }
   };
-
-  const editar = (o) => {
-    setForm(o);
-    setEditId(o.id);
-  };
-
-  const eliminar = async (id) => {
-    if (confirm("¿Eliminar esta orden?")) {
-      await deleteDoc(doc(db, "ordenes", id));
-    }
-  };
-
-  const cambiarEstado = async (id, estado) => {
-    await updateDoc(doc(db, "ordenes", id), { estado });
-  };
-
-  const enviarWhatsApp = (o) => {
-    const mensaje = `📱 Ink-Mobile
-
-Orden #${o.numero}
-Cliente: ${o.nombre}
-Dispositivo: ${o.dispositivo}
-Estado: ${o.estado}
-Problema: ${o.problema}`;
-
-    window.open(`https://wa.me/34${o.telefono}?text=${encodeURIComponent(mensaje)}`);
-  };
-
-  const columnas = ["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"];
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>🏪 Ink-Mobile</h1>
+      <h1>🔧 Ink-Mobile</h1>
 
       {/* FORM */}
       <div style={{ background: "#eee", padding: 20 }}>
-        <input placeholder="Nombre" value={form.nombre || ""} onChange={(e)=>setForm({...form,nombre:e.target.value})}/>
-        <input placeholder="Teléfono" value={form.telefono || ""} onChange={(e)=>setForm({...form,telefono:e.target.value})}/>
-        <input placeholder="Dispositivo" value={form.dispositivo || ""} onChange={(e)=>setForm({...form,dispositivo:e.target.value})}/>
-        <input placeholder="Problema" value={form.problema || ""} onChange={(e)=>setForm({...form,problema:e.target.value})}/>
-        <input placeholder="€" value={form.presupuesto || ""} onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
+        <input placeholder="Nombre" onChange={e=>setForm({...form,nombre:e.target.value})}/>
+        <input placeholder="DNI" onChange={e=>setForm({...form,dni:e.target.value})}/>
+        <input placeholder="Teléfono" onChange={e=>setForm({...form,telefono:e.target.value})}/>
+        <input placeholder="Dispositivo" onChange={e=>setForm({...form,dispositivo:e.target.value})}/>
+        <input placeholder="Problema" onChange={e=>setForm({...form,problema:e.target.value})}/>
+        <input placeholder="Presupuesto" onChange={e=>setForm({...form,presupuesto:e.target.value})}/>
+
         <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
 
-        <canvas ref={canvasRef} width={300} height={120} style={{ border:"2px solid black", touchAction:"none" }} />
+        <br/><br/>
 
-        <button onClick={()=> {
-          const ctx = canvasRef.current.getContext("2d");
-          ctx.clearRect(0,0,300,120);
-        }}>Limpiar firma</button>
+        <canvas ref={canvasRef} width={300} height={120} style={{border:"2px solid black"}} />
 
         <br/><br/>
 
         <button onClick={guardar}>
-          {editId ? "Actualizar + imprimir" : "Guardar + imprimir"}
+          Guardar + imprimir
         </button>
       </div>
-
-      {/* COLUMNAS */}
-      <div style={{ display: "flex", gap: 20, marginTop:20 }}>
-        {columnas.map(col => (
-          <div key={col} style={{ flex: 1, background: "#f5f5f5", padding: 10 }}>
-            <h3>{col}</h3>
-
-            {ordenes.filter(o => o.estado === col).map(o => (
-              <div key={o.id} style={{ background:"white", marginBottom:10, padding:10 }}>
-                <b>#{o.numero}</b><br/>
-                {o.nombre}<br/>
-                {o.dispositivo}
-
-                <br/><br/>
-
-                <button onClick={()=>setOrdenSeleccionada(o)}>Ver</button>
-                <button onClick={()=>editar(o)}>Editar</button>
-                <button onClick={()=>eliminar(o.id)}>Eliminar</button>
-                <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
-
-                <br/><br/>
-
-                <select value={o.estado} onChange={(e)=>cambiarEstado(o.id,e.target.value)}>
-                  {columnas.map(c=> <option key={c}>{c}</option>)}
-                </select>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      {/* DETALLE */}
-      {ordenSeleccionada && (
-        <div style={{ position:"fixed", top:0,left:0,width:"100%",height:"100%", background:"rgba(0,0,0,0.6)" }}>
-          <div style={{ background:"white", padding:20, margin:"5% auto", width:400 }}>
-            <h3>Orden #{ordenSeleccionada.numero}</h3>
-
-            <p>{ordenSeleccionada.nombre}</p>
-            <p>{ordenSeleccionada.telefono}</p>
-            <p>{ordenSeleccionada.dispositivo}</p>
-            <p>{ordenSeleccionada.problema}</p>
-
-            {ordenSeleccionada.foto && <img src={ordenSeleccionada.foto} width="100%" />}
-            <img src={ordenSeleccionada.firma} width="100%" />
-
-            <br/>
-
-            <button onClick={()=>imprimirTicket(ordenSeleccionada)}>Imprimir</button>
-            <button onClick={()=>setOrdenSeleccionada(null)}>Cerrar</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

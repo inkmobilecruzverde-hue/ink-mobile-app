@@ -9,6 +9,7 @@ import {
   onSnapshot,
   updateDoc,
   doc,
+  deleteDoc,
 } from "firebase/firestore";
 import {
   getStorage,
@@ -33,6 +34,7 @@ const storage = getStorage(app);
 export default function Page() {
   const [ordenes, setOrdenes] = useState([]);
   const [form, setForm] = useState({});
+  const [editId, setEditId] = useState(null);
   const [file, setFile] = useState(null);
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
   const canvasRef = useRef(null);
@@ -45,7 +47,7 @@ export default function Page() {
   }, []);
 
   const guardar = async () => {
-    let fotoURL = "";
+    let fotoURL = form.foto || "";
 
     if (file) {
       const storageRef = ref(storage, "ordenes/" + Date.now());
@@ -56,21 +58,59 @@ export default function Page() {
     const firma = canvasRef.current.toDataURL();
     const ahora = new Date();
 
-    await addDoc(collection(db, "ordenes"), {
+    const data = {
       ...form,
       foto: fotoURL,
       firma,
       fecha: ahora.toLocaleDateString(),
       hora: ahora.toLocaleTimeString(),
-      numero: Date.now(),
-      estado: "Recibido",
-    });
+    };
 
-    alert("Orden guardada");
+    if (editId) {
+      await updateDoc(doc(db, "ordenes", editId), data);
+      setEditId(null);
+    } else {
+      await addDoc(collection(db, "ordenes"), {
+        ...data,
+        numero: Date.now(),
+        estado: "Recibido",
+      });
+    }
+
+    setForm({});
+    alert("Guardado");
+  };
+
+  const editar = (o) => {
+    setForm(o);
+    setEditId(o.id);
+  };
+
+  const eliminar = async (id) => {
+    if (confirm("¿Eliminar esta orden?")) {
+      await deleteDoc(doc(db, "ordenes", id));
+    }
   };
 
   const cambiarEstado = async (id, estado) => {
     await updateDoc(doc(db, "ordenes", id), { estado });
+  };
+
+  const enviarWhatsApp = (o) => {
+    const mensaje = `
+📱 Ink-Mobile
+
+Orden #${o.numero}
+Cliente: ${o.nombre}
+Dispositivo: ${o.dispositivo}
+Estado: ${o.estado}
+Problema: ${o.problema}
+
+Gracias por confiar en nosotros 🙌
+`;
+
+    const url = `https://wa.me/34${o.telefono}?text=${encodeURIComponent(mensaje)}`;
+    window.open(url, "_blank");
   };
 
   const columnas = ["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"];
@@ -80,22 +120,24 @@ export default function Page() {
       <h1>🏪 Ink-Mobile</h1>
 
       {/* FORM */}
-      <div style={{ background: "#eee", padding: 20, marginBottom: 20 }}>
-        <input placeholder="Nombre" onChange={(e)=>setForm({...form,nombre:e.target.value})}/>
-        <input placeholder="Teléfono" onChange={(e)=>setForm({...form,telefono:e.target.value})}/>
-        <input placeholder="Dispositivo" onChange={(e)=>setForm({...form,dispositivo:e.target.value})}/>
-        <input placeholder="Problema" onChange={(e)=>setForm({...form,problema:e.target.value})}/>
-        <input placeholder="€" onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
+      <div style={{ background: "#eee", padding: 20 }}>
+        <input placeholder="Nombre" value={form.nombre || ""} onChange={(e)=>setForm({...form,nombre:e.target.value})}/>
+        <input placeholder="Teléfono" value={form.telefono || ""} onChange={(e)=>setForm({...form,telefono:e.target.value})}/>
+        <input placeholder="Dispositivo" value={form.dispositivo || ""} onChange={(e)=>setForm({...form,dispositivo:e.target.value})}/>
+        <input placeholder="Problema" value={form.problema || ""} onChange={(e)=>setForm({...form,problema:e.target.value})}/>
+        <input placeholder="€" value={form.presupuesto || ""} onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
         <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
 
         <canvas ref={canvasRef} width={300} height={100} style={{border:"1px solid black"}} />
 
         <br/><br/>
-        <button onClick={guardar}>Guardar + imprimir</button>
+        <button onClick={guardar}>
+          {editId ? "Actualizar orden" : "Guardar orden"}
+        </button>
       </div>
 
       {/* COLUMNAS */}
-      <div style={{ display: "flex", gap: 20 }}>
+      <div style={{ display: "flex", gap: 20, marginTop:20 }}>
         {columnas.map(col => (
           <div key={col} style={{ flex: 1, background: "#f5f5f5", padding: 10 }}>
             <h3>{col}</h3>
@@ -116,6 +158,11 @@ export default function Page() {
                   <br/><br/>
 
                   <button onClick={()=>setOrdenSeleccionada(o)}>Ver</button>
+                  <button onClick={()=>editar(o)}>Editar</button>
+                  <button onClick={()=>eliminar(o.id)}>Eliminar</button>
+                  <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
+
+                  <br/><br/>
 
                   <select
                     value={o.estado}
@@ -151,7 +198,6 @@ export default function Page() {
             <p><b>Dispositivo:</b> {ordenSeleccionada.dispositivo}</p>
             <p><b>Problema:</b> {ordenSeleccionada.problema}</p>
             <p><b>€:</b> {ordenSeleccionada.presupuesto}</p>
-            <p><b>Fecha:</b> {ordenSeleccionada.fecha} {ordenSeleccionada.hora}</p>
 
             {ordenSeleccionada.foto && (
               <img src={ordenSeleccionada.foto} width="100%" />
@@ -161,7 +207,6 @@ export default function Page() {
 
             <br/><br/>
 
-            <button onClick={()=>window.print()}>🖨 Imprimir</button>
             <button onClick={()=>setOrdenSeleccionada(null)}>Cerrar</button>
           </div>
         </div>

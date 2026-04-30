@@ -1,116 +1,81 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 export default function Home() {
-  const [clientes, setClientes] = useState([]);
-  const [nombreCliente, setNombreCliente] = useState("");
+  const [orden, setOrden] = useState({
+    numero: "",
+    fecha: new Date().toISOString().split("T")[0],
+    nombre: "",
+    dni: "",
+    telefono: "",
+    dispositivo: "",
+    codigo: "",
+    problema: "",
+    notas: "",
+    presupuesto: "",
+    estado: "recibido",
+    foto: null,
+  });
 
-  useEffect(() => {
-    const data = localStorage.getItem("clientes");
-    if (data) setClientes(JSON.parse(data));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("clientes", JSON.stringify(clientes));
-  }, [clientes]);
-
-  const añadirCliente = () => {
-    if (!nombreCliente) return;
-    setClientes([...clientes, { nombre: nombreCliente, dispositivos: [] }]);
-    setNombreCliente("");
+  const handleChange = (e) => {
+    setOrden({ ...orden, [e.target.name]: e.target.value });
   };
 
-  const añadirDispositivo = (index) => {
-    const nombre = prompt("Dispositivo (ej: iPhone 11)");
-    if (!nombre) return;
-
-    const nuevos = [...clientes];
-    nuevos[index].dispositivos.push({ nombre, reparaciones: [] });
-    setClientes(nuevos);
+  const handleFoto = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setOrden({ ...orden, foto: URL.createObjectURL(file) });
+    }
   };
 
-  const añadirReparacion = (cIndex, dIndex) => {
-    const texto = prompt("Reparación");
-    if (!texto) return;
-
-    const nuevos = [...clientes];
-    nuevos[cIndex].dispositivos[dIndex].reparaciones.push({
-      texto,
-      estado: "pendiente",
-      fecha: new Date().toLocaleDateString(),
-    });
-
-    setClientes(nuevos);
-  };
-
-  const cambiarEstado = (cIndex, dIndex, rIndex) => {
-    const nuevos = [...clientes];
-    const rep = nuevos[cIndex].dispositivos[dIndex].reparaciones[rIndex];
-    rep.estado = rep.estado === "pendiente" ? "hecho" : "pendiente";
-    setClientes(nuevos);
+  const guardar = () => {
+    console.log("ORDEN:", orden);
+    alert("Orden guardada (de momento en consola)");
   };
 
   return (
     <main style={styles.container}>
-      <h1 style={styles.title}>🛠️ Ink-Mobile</h1>
+      <h1>🛠️ Nueva Orden</h1>
 
-      <div style={styles.inputBox}>
-        <input
-          style={styles.input}
-          value={nombreCliente}
-          onChange={(e) => setNombreCliente(e.target.value)}
-          placeholder="Nombre del cliente"
-        />
-        <button style={styles.button} onClick={añadirCliente}>
-          Añadir
-        </button>
+      {/* CLIENTE */}
+      <h2>📋 Datos cliente</h2>
+      <div style={styles.grid}>
+        <input name="numero" placeholder="Nº Orden" onChange={handleChange} />
+        <input name="fecha" type="date" value={orden.fecha} onChange={handleChange} />
+        <input name="nombre" placeholder="Nombre" onChange={handleChange} />
+        <input name="dni" placeholder="DNI" onChange={handleChange} />
+        <input name="telefono" placeholder="Teléfono" onChange={handleChange} />
       </div>
 
-      {clientes.map((cliente, cIndex) => (
-        <div key={cIndex} style={styles.card}>
-          <h2>👤 {cliente.nombre}</h2>
+      {/* DISPOSITIVO */}
+      <h2>📱 Dispositivo</h2>
+      <div style={styles.grid}>
+        <input name="dispositivo" placeholder="Dispositivo" onChange={handleChange} />
+        <input name="codigo" placeholder="Código bloqueo" onChange={handleChange} />
+        <input name="problema" placeholder="Problema" onChange={handleChange} />
+        <input name="notas" placeholder="Notas" onChange={handleChange} />
+        <input name="presupuesto" placeholder="Presupuesto €" onChange={handleChange} />
+      </div>
 
-          <button style={styles.smallButton} onClick={() => añadirDispositivo(cIndex)}>
-            + Dispositivo
-          </button>
+      {/* FOTO */}
+      <h2>📸 Estado del equipo</h2>
+      <input type="file" accept="image/*" capture="environment" onChange={handleFoto} />
+      {orden.foto && <img src={orden.foto} style={{ width: 200, marginTop: 10 }} />}
 
-          {cliente.dispositivos.map((disp, dIndex) => (
-            <div key={dIndex} style={styles.device}>
-              <h3>💻 {disp.nombre}</h3>
+      {/* ESTADO */}
+      <h2>📊 Estado</h2>
+      <select name="estado" value={orden.estado} onChange={handleChange}>
+        <option value="recibido">Recibido</option>
+        <option value="pendiente">Pendiente</option>
+        <option value="recambio">Pendiente recambio</option>
+        <option value="finalizado">Finalizado</option>
+      </select>
 
-              <button
-                style={styles.smallButton}
-                onClick={() => añadirReparacion(cIndex, dIndex)}
-              >
-                + Reparación
-              </button>
+      <br /><br />
 
-              <ul>
-                {disp.reparaciones.map((rep, rIndex) => (
-                  <li key={rIndex} style={styles.repair}>
-                    {rep.texto} ({rep.fecha}) -
-                    <span
-                      style={{
-                        color: rep.estado === "hecho" ? "green" : "orange",
-                        marginLeft: 5,
-                      }}
-                    >
-                      {rep.estado}
-                    </span>
-
-                    <button
-                      style={styles.doneButton}
-                      onClick={() => cambiarEstado(cIndex, dIndex, rIndex)}
-                    >
-                      ✔
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      ))}
+      <button onClick={guardar} style={styles.button}>
+        Guardar orden
+      </button>
     </main>
   );
 }
@@ -118,61 +83,20 @@ export default function Home() {
 const styles = {
   container: {
     padding: 20,
-    maxWidth: 600,
+    maxWidth: 700,
     margin: "auto",
     fontFamily: "Arial",
   },
-  title: {
-    textAlign: "center",
-  },
-  inputBox: {
-    display: "flex",
+  grid: {
+    display: "grid",
     gap: 10,
     marginBottom: 20,
   },
-  input: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 8,
-    border: "1px solid #ccc",
-  },
   button: {
-    padding: "10px 15px",
-    borderRadius: 8,
-    border: "none",
+    padding: 10,
     background: "black",
     color: "white",
-    cursor: "pointer",
-  },
-  smallButton: {
-    marginTop: 10,
-    padding: "5px 10px",
-    borderRadius: 6,
     border: "none",
-    background: "#444",
-    color: "white",
-    cursor: "pointer",
-  },
-  card: {
-    border: "1px solid #ddd",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-    background: "#f9f9f9",
-  },
-  device: {
-    marginLeft: 10,
-    marginTop: 10,
-  },
-  repair: {
-    marginTop: 5,
-  },
-  doneButton: {
-    marginLeft: 10,
-    background: "green",
-    color: "white",
-    border: "none",
-    borderRadius: 5,
-    cursor: "pointer",
+    borderRadius: 8,
   },
 };

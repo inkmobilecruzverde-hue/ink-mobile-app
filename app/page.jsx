@@ -46,6 +46,45 @@ export default function Page() {
     return () => unsub();
   }, []);
 
+  const imprimirTicket = (o) => {
+    const w = window.open("", "_blank");
+
+    w.document.write(`
+      <h2>Ink-Mobile</h2>
+      <p>CIF: E56261365</p>
+      <p>Calle Cruz Verde Nº22</p>
+      <p>Tel: 600 639 228</p>
+      <hr/>
+
+      <h3>Orden #${o.numero}</h3>
+      <p>${o.fecha} - ${o.hora}</p>
+
+      <p><b>Cliente:</b> ${o.nombre}</p>
+      <p><b>Teléfono:</b> ${o.telefono}</p>
+      <p><b>Dispositivo:</b> ${o.dispositivo}</p>
+      <p><b>Problema:</b> ${o.problema}</p>
+      <p><b>Presupuesto:</b> ${o.presupuesto}€</p>
+
+      <hr/>
+
+      <p><b>Firma:</b></p>
+      <img src="${o.firma}" width="200"/>
+
+      ${
+        o.foto
+          ? `<p><b>Estado del dispositivo:</b></p>
+             <img src="${o.foto}" width="200"/>`
+          : ""
+      }
+
+      <script>
+        window.onload = () => window.print();
+      </script>
+    `);
+
+    w.document.close();
+  };
+
   const guardar = async () => {
     let fotoURL = form.foto || "";
 
@@ -66,19 +105,26 @@ export default function Page() {
       hora: ahora.toLocaleTimeString(),
     };
 
+    let ordenFinal;
+
     if (editId) {
       await updateDoc(doc(db, "ordenes", editId), data);
+      ordenFinal = { ...data, numero: form.numero };
       setEditId(null);
     } else {
+      const numero = Date.now();
+      ordenFinal = { ...data, numero };
+
       await addDoc(collection(db, "ordenes"), {
-        ...data,
-        numero: Date.now(),
+        ...ordenFinal,
         estado: "Recibido",
       });
     }
 
     setForm({});
     alert("Guardado");
+
+    imprimirTicket(ordenFinal);
   };
 
   const editar = (o) => {
@@ -132,7 +178,7 @@ Gracias por confiar en nosotros 🙌
 
         <br/><br/>
         <button onClick={guardar}>
-          {editId ? "Actualizar orden" : "Guardar orden"}
+          {editId ? "Actualizar + imprimir" : "Guardar + imprimir"}
         </button>
       </div>
 
@@ -198,6 +244,7 @@ Gracias por confiar en nosotros 🙌
             <p><b>Dispositivo:</b> {ordenSeleccionada.dispositivo}</p>
             <p><b>Problema:</b> {ordenSeleccionada.problema}</p>
             <p><b>€:</b> {ordenSeleccionada.presupuesto}</p>
+            <p><b>Fecha:</b> {ordenSeleccionada.fecha} {ordenSeleccionada.hora}</p>
 
             {ordenSeleccionada.foto && (
               <img src={ordenSeleccionada.foto} width="100%" />
@@ -207,6 +254,7 @@ Gracias por confiar en nosotros 🙌
 
             <br/><br/>
 
+            <button onClick={()=>imprimirTicket(ordenSeleccionada)}>🖨 Imprimir</button>
             <button onClick={()=>setOrdenSeleccionada(null)}>Cerrar</button>
           </div>
         </div>

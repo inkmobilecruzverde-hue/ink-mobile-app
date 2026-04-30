@@ -82,28 +82,33 @@ export default function Home() {
 
       <h2>Órdenes guardadas</h2>
 
-      <table border="1">
-        <thead>
-          <tr>
-            <th>Nº</th>
-            <th>Nombre</th>
-            <th>Teléfono</th>
-            <th>Dispositivo</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ordenes.map((o, i) => (
+   {["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"].map((estado) => (
+  <div key={estado}>
+    <h3>{estado}</h3>
+
+    <table border="1">
+      <thead>
+        <tr>
+          <th>Nº</th>
+          <th>Nombre</th>
+          <th>Teléfono</th>
+          <th>Dispositivo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ordenes
+          .filter((o) => o.estado === estado)
+          .map((o, i) => (
             <tr key={i}>
               <td>{o.numero}</td>
               <td>{o.nombre}</td>
               <td>{o.telefono}</td>
               <td>{o.dispositivo}</td>
-              <td>{o.estado}</td>
             </tr>
           ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+      </tbody>
+    </table>
+
+    <br />
+  </div>
+))}

@@ -69,33 +69,11 @@ export default function Page() {
     alert("Orden guardada");
   };
 
-  const imprimir = () => {
-    const w = window.open("", "_blank");
-    w.document.write(`
-      <h2>Ink-Mobile</h2>
-      <p>CIF: E56261365</p>
-      <p>Calle Cruz Verde Nº22</p>
-      <p>Tel: 600 639 228</p>
-      <hr/>
-      <h3>Orden #${ordenSeleccionada.numero}</h3>
-      <p>Fecha: ${ordenSeleccionada.fecha} ${ordenSeleccionada.hora}</p>
-      <p>Cliente: ${ordenSeleccionada.nombre}</p>
-      <p>Teléfono: ${ordenSeleccionada.telefono}</p>
-      <p>Dispositivo: ${ordenSeleccionada.dispositivo}</p>
-      <p>Problema: ${ordenSeleccionada.problema}</p>
-      <p>Presupuesto: ${ordenSeleccionada.presupuesto}€</p>
-      <hr/>
-      <p>Firma cliente:</p>
-      <img src="${ordenSeleccionada.firma}" width="200"/>
-      <br/>
-      ${ordenSeleccionada.foto ? `<p>Estado del dispositivo:</p><img src="${ordenSeleccionada.foto}" width="200"/>` : ""}
-    `);
-    w.print();
-  };
-
   const cambiarEstado = async (id, estado) => {
     await updateDoc(doc(db, "ordenes", id), { estado });
   };
+
+  const columnas = ["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"];
 
   return (
     <div style={{ padding: 20 }}>
@@ -116,26 +94,42 @@ export default function Page() {
         <button onClick={guardar}>Guardar + imprimir</button>
       </div>
 
-      <h2>Órdenes</h2>
+      {/* COLUMNAS */}
+      <div style={{ display: "flex", gap: 20 }}>
+        {columnas.map(col => (
+          <div key={col} style={{ flex: 1, background: "#f5f5f5", padding: 10 }}>
+            <h3>{col}</h3>
 
-      {ordenes.map(o=>(
-        <div key={o.id} style={{border:"1px solid #ccc", margin:10, padding:10}}>
-          <b>#{o.numero}</b> - {o.nombre} - {o.dispositivo}
+            {ordenes
+              .filter(o => o.estado === col)
+              .map(o => (
+                <div key={o.id} style={{
+                  background:"white",
+                  marginBottom:10,
+                  padding:10,
+                  border:"1px solid #ccc"
+                }}>
+                  <b>#{o.numero}</b><br/>
+                  {o.nombre}<br/>
+                  {o.dispositivo}
 
-          <br/>
+                  <br/><br/>
 
-          <button onClick={()=>setOrdenSeleccionada(o)}>Ver</button>
+                  <button onClick={()=>setOrdenSeleccionada(o)}>Ver</button>
 
-          <select
-            value={o.estado}
-            onChange={(e)=>cambiarEstado(o.id,e.target.value)}
-          >
-            <option>Recibido</option>
-            <option>Pendiente</option>
-            <option>Finalizado</option>
-          </select>
-        </div>
-      ))}
+                  <select
+                    value={o.estado}
+                    onChange={(e)=>cambiarEstado(o.id,e.target.value)}
+                  >
+                    {columnas.map(c=>(
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+          </div>
+        ))}
+      </div>
 
       {/* DETALLE */}
       {ordenSeleccionada && (
@@ -157,6 +151,7 @@ export default function Page() {
             <p><b>Dispositivo:</b> {ordenSeleccionada.dispositivo}</p>
             <p><b>Problema:</b> {ordenSeleccionada.problema}</p>
             <p><b>€:</b> {ordenSeleccionada.presupuesto}</p>
+            <p><b>Fecha:</b> {ordenSeleccionada.fecha} {ordenSeleccionada.hora}</p>
 
             {ordenSeleccionada.foto && (
               <img src={ordenSeleccionada.foto} width="100%" />
@@ -166,7 +161,7 @@ export default function Page() {
 
             <br/><br/>
 
-            <button onClick={imprimir}>🖨 Imprimir</button>
+            <button onClick={()=>window.print()}>🖨 Imprimir</button>
             <button onClick={()=>setOrdenSeleccionada(null)}>Cerrar</button>
           </div>
         </div>

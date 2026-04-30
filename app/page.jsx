@@ -82,33 +82,36 @@ export default function Home() {
 
       <h2>Órdenes guardadas</h2>
 
-   {["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"].map((estado) => (
-  <div key={estado}>
-    <h3>{estado}</h3>
+      {["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"].map((estado) => (
+        <div key={estado}>
+          <h3>{estado}</h3>
 
-    <table border="1">
-      <thead>
-        <tr>
-          <th>Nº</th>
-          <th>Nombre</th>
-          <th>Teléfono</th>
-          <th>Dispositivo</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ordenes
-          .filter((o) => o.estado === estado)
-          .map((o, i) => (
-            <tr key={i}>
-              <td>{o.numero}</td>
-              <td>{o.nombre}</td>
-              <td>{o.telefono}</td>
-              <td>{o.dispositivo}</td>
-            </tr>
-          ))}
-      </tbody>
-    </table>
+          <table border="1">
+            <thead>
+              <tr>
+                <th>Nº</th>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Dispositivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordenes
+                .filter((o) => o.estado === estado)
+                .map((o, i) => (
+                  <tr key={i}>
+                    <td>{o.numero}</td>
+                    <td>{o.nombre}</td>
+                    <td>{o.telefono}</td>
+                    <td>{o.dispositivo}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
 
-    <br />
-  </div>
-))}
+          <br />
+        </div>
+      ))}
+    </div>
+  );
+}

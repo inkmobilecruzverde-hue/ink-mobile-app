@@ -11,138 +11,85 @@ import {
   doc,
   deleteDoc,
 } from "firebase/firestore";
-import {
-  getStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-} from "firebase/storage";
 
-// 🔥 FIREBASE CONFIG
+// 🔥 CONFIG
 const firebaseConfig = {
   apiKey: "AIzaSyCQUkrs1QJFmbrAQqt_dRLmgHfU3Zp-c2Y",
   authDomain: "ink-mobile-5ee6a.firebaseapp.com",
   projectId: "ink-mobile-5ee6a",
-  storageBucket: "ink-mobile-5ee6a.appspot.com",
-  messagingSenderId: "174258192559",
-  appId: "1:174258192559:web:811e204b40c6c8199c945a",
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 export default function Page() {
   const [ordenes, setOrdenes] = useState([]);
   const [form, setForm] = useState({});
-  const [file, setFile] = useState(null);
   const [editId, setEditId] = useState(null);
-  const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
   const [ordenImprimir, setOrdenImprimir] = useState(null);
   const canvasRef = useRef(null);
 
-  const columnas = ["Recibido", "Pendiente", "Pendiente de recambio", "Finalizado"];
+  const estados = ["Recibido", "Pendiente", "Recambio", "Finalizado"];
 
-  // 🔄 CARGA DATOS
+  // 🔄 CARGA
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "ordenes"), (snapshot) => {
-      setOrdenes(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const unsub = onSnapshot(collection(db, "ordenes"), (snap) => {
+      setOrdenes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, []);
 
-  // ✍️ FIRMA (TACTIL + RATÓN)
+  // ✍️ FIRMA SIMPLE
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    let drawing = false;
-
-    const getPos = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      if (e.touches) {
-        return {
-          x: e.touches[0].clientX - rect.left,
-          y: e.touches[0].clientY - rect.top,
-        };
-      }
-      return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      };
-    };
+    let draw = false;
 
     const start = (e) => {
-      drawing = true;
-      const pos = getPos(e);
+      draw = true;
       ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
     };
 
-    const draw = (e) => {
-      if (!drawing) return;
-      e.preventDefault();
-      const pos = getPos(e);
-      ctx.lineTo(pos.x, pos.y);
+    const move = (e) => {
+      if (!draw) return;
+      ctx.lineTo(e.offsetX, e.offsetY);
       ctx.stroke();
     };
 
-    const stop = () => (drawing = false);
+    const stop = () => (draw = false);
 
     canvas.addEventListener("mousedown", start);
-    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mousemove", move);
     window.addEventListener("mouseup", stop);
-
-    canvas.addEventListener("touchstart", start);
-    canvas.addEventListener("touchmove", draw);
-    window.addEventListener("touchend", stop);
   }, []);
 
-  // 💾 GUARDAR + IMPRIMIR (SIN POPUPS)
+  // 💾 GUARDAR + IMPRIMIR
   const guardar = async () => {
-    try {
-      if (!form.nombre || !form.telefono) {
-        alert("Faltan datos");
-        return;
-      }
+    const firma = canvasRef.current.toDataURL();
+    const ahora = new Date();
 
-      let fotoURL = "";
+    const data = {
+      ...form,
+      firma,
+      fecha: ahora.toLocaleDateString(),
+      hora: ahora.toLocaleTimeString(),
+      numero: editId ? form.numero : Date.now(),
+      estado: form.estado || "Recibido",
+    };
 
-      if (file) {
-        const storageRef = ref(storage, "ordenes/" + Date.now());
-        await uploadBytes(storageRef, file);
-        fotoURL = await getDownloadURL(storageRef);
-      }
-
-      const firma = canvasRef.current.toDataURL();
-      const ahora = new Date();
-
-      const data = {
-        ...form,
-        foto: fotoURL,
-        firma,
-        fecha: ahora.toLocaleDateString(),
-        hora: ahora.toLocaleTimeString(),
-        numero: editId ? form.numero : Date.now(),
-        estado: form.estado || "Recibido",
-      };
-
-      if (editId) {
-        await updateDoc(doc(db, "ordenes", editId), data);
-        setEditId(null);
-      } else {
-        await addDoc(collection(db, "ordenes"), data);
-      }
-
-      setOrdenImprimir(data);
-      setTimeout(() => window.print(), 200);
-
-      setForm({});
-      setFile(null);
-      canvasRef.current.getContext("2d").clearRect(0, 0, 300, 120);
-
-    } catch (e) {
-      alert("Error al guardar");
+    if (editId) {
+      await updateDoc(doc(db, "ordenes", editId), data);
+      setEditId(null);
+    } else {
+      await addDoc(collection(db, "ordenes"), data);
     }
+
+    setOrdenImprimir(data);
+
+    setTimeout(() => window.print(), 200);
+
+    setForm({});
+    canvasRef.current.getContext("2d").clearRect(0, 0, 300, 120);
   };
 
   // 🧠 ACCIONES
@@ -152,7 +99,7 @@ export default function Page() {
   };
 
   const eliminar = async (id) => {
-    if (confirm("¿Eliminar orden?")) {
+    if (confirm("Eliminar orden?")) {
       await deleteDoc(doc(db, "ordenes", id));
     }
   };
@@ -162,39 +109,30 @@ export default function Page() {
   };
 
   const enviarWhatsApp = (o) => {
-    const msg = `📱 Ink-Mobile
-Orden #${o.numero}
-Cliente: ${o.nombre}
-Equipo: ${o.dispositivo}
-Estado: ${o.estado}`;
-
+    const msg = `Orden ${o.numero} - ${o.estado}`;
     window.open(`https://wa.me/34${o.telefono}?text=${encodeURIComponent(msg)}`);
   };
 
+  // 💰 PANEL SIMPLE
+  const total = ordenes.reduce((a, o) => a + Number(o.presupuesto || 0), 0);
+
   return (
     <div style={{ padding: 20 }}>
-      <h1>🔧 Ink-Mobile</h1>
+      <h1>Ink-Mobile PRO</h1>
+
+      <h3>💰 Total generado: {total}€</h3>
 
       {/* FORM */}
       <div style={{ background: "#eee", padding: 20 }}>
         <input placeholder="Nombre" value={form.nombre || ""} onChange={(e)=>setForm({...form,nombre:e.target.value})}/>
-        <input placeholder="DNI" value={form.dni || ""} onChange={(e)=>setForm({...form,dni:e.target.value})}/>
         <input placeholder="Teléfono" value={form.telefono || ""} onChange={(e)=>setForm({...form,telefono:e.target.value})}/>
         <input placeholder="Dispositivo" value={form.dispositivo || ""} onChange={(e)=>setForm({...form,dispositivo:e.target.value})}/>
         <input placeholder="Problema" value={form.problema || ""} onChange={(e)=>setForm({...form,problema:e.target.value})}/>
-        <input placeholder="Presupuesto (€)" value={form.presupuesto || ""} onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
+        <input placeholder="€" value={form.presupuesto || ""} onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
 
-        <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
-
-        <canvas
-          ref={canvasRef}
-          width={300}
-          height={120}
-          style={{ border:"2px solid black", touchAction:"none" }}
-        />
+        <canvas ref={canvasRef} width={300} height={120} style={{border:"1px solid black"}}/>
 
         <br/><br/>
-
         <button onClick={guardar}>
           {editId ? "Actualizar + imprimir" : "Guardar + imprimir"}
         </button>
@@ -202,27 +140,25 @@ Estado: ${o.estado}`;
 
       {/* COLUMNAS */}
       <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-        {columnas.map(col => (
-          <div key={col} style={{ flex: 1, background: "#f5f5f5", padding: 10 }}>
-            <h3>{col} ({ordenes.filter(o=>o.estado===col).length})</h3>
+        {estados.map(e => (
+          <div key={e} style={{ flex:1, background:"#f5f5f5", padding:10 }}>
+            <h3>{e}</h3>
 
-            {ordenes.filter(o=>o.estado===col).map(o=>(
-              <div key={o.id} style={{ background:"#fff", marginBottom:10, padding:10 }}>
-                <b>#{o.numero}</b><br/>
-                {o.nombre}<br/>
-                {o.dispositivo}
+            {ordenes.filter(o=>o.estado===e).map(o=>(
+              <div key={o.id} style={{ background:"#fff", margin:5, padding:5 }}>
+                #{o.numero}<br/>
+                {o.nombre}
 
-                <br/><br/>
+                <br/>
 
-                <button onClick={()=>setOrdenSeleccionada(o)}>Ver</button>
                 <button onClick={()=>editar(o)}>Editar</button>
                 <button onClick={()=>eliminar(o.id)}>Eliminar</button>
                 <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
 
-                <br/><br/>
+                <br/>
 
-                <select value={o.estado} onChange={(e)=>cambiarEstado(o.id,e.target.value)}>
-                  {columnas.map(c=> <option key={c}>{c}</option>)}
+                <select value={o.estado} onChange={(ev)=>cambiarEstado(o.id,ev.target.value)}>
+                  {estados.map(s=><option key={s}>{s}</option>)}
                 </select>
               </div>
             ))}
@@ -230,48 +166,14 @@ Estado: ${o.estado}`;
         ))}
       </div>
 
-      {/* DETALLE */}
-      {ordenSeleccionada && (
-        <div style={{
-          position:"fixed",top:0,left:0,width:"100%",height:"100%",
-          background:"rgba(0,0,0,0.6)"
-        }}>
-          <div style={{ background:"#fff", padding:20, margin:"5% auto", width:400 }}>
-            <h3>Orden #{ordenSeleccionada.numero}</h3>
-
-            <p><b>Nombre:</b> {ordenSeleccionada.nombre}</p>
-            <p><b>DNI:</b> {ordenSeleccionada.dni}</p>
-            <p><b>Teléfono:</b> {ordenSeleccionada.telefono}</p>
-            <p><b>Dispositivo:</b> {ordenSeleccionada.dispositivo}</p>
-            <p><b>Problema:</b> {ordenSeleccionada.problema}</p>
-
-            {ordenSeleccionada.foto && <img src={ordenSeleccionada.foto} width="100%" />}
-            <img src={ordenSeleccionada.firma} width="100%" />
-
-            <br/><br/>
-
-            <button onClick={()=>setOrdenSeleccionada(null)}>Cerrar</button>
-          </div>
-        </div>
-      )}
-
       {/* PRINT */}
       {ordenImprimir && (
         <div className="print">
           <h2>Ink-Mobile</h2>
-          <p>CIF: E56261365</p>
-          <p>Calle Cruz Verde Nº22</p>
-          <p>Tel: 600 639 228</p>
-          <hr/>
-          <h3>Orden #{ordenImprimir.numero}</h3>
-          <p>{ordenImprimir.fecha} - {ordenImprimir.hora}</p>
+          <p>Orden #{ordenImprimir.numero}</p>
           <p>{ordenImprimir.nombre}</p>
-          <p>{ordenImprimir.dni}</p>
-          <p>{ordenImprimir.telefono}</p>
           <p>{ordenImprimir.dispositivo}</p>
           <p>{ordenImprimir.problema}</p>
-          <p>{ordenImprimir.presupuesto}€</p>
-          <img src={ordenImprimir.firma} width="200"/>
         </div>
       )}
 
@@ -279,7 +181,7 @@ Estado: ${o.estado}`;
         @media print {
           body * { visibility:hidden }
           .print, .print * { visibility:visible }
-          .print { position:absolute; top:0; left:0 }
+          .print { position:absolute; top:0 }
         }
       `}</style>
     </div>

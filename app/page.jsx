@@ -5,6 +5,7 @@ import { db } from "../lib/firebase";
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
 
 export default function Home() {
+
   const [orders, setOrders] = useState([]);
 
   const [nombre, setNombre] = useState("");
@@ -17,12 +18,12 @@ export default function Home() {
   const canvasRef = useRef(null);
   let drawing = false;
 
-  // 🔥 CARGAR ÓRDENES
+  // 🔄 Cargar órdenes
   const loadOrders = async () => {
     const querySnapshot = await getDocs(collection(db, "orders"));
-    const data = querySnapshot.docs.map((doc) => ({
+    const data = querySnapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data(),
+      ...doc.data()
     }));
     setOrders(data);
   };
@@ -31,12 +32,13 @@ export default function Home() {
     loadOrders();
   }, []);
 
-  // 🖊 FIRMA
-  const startDrawing = () => (drawing = true);
-  const stopDrawing = () => (drawing = false);
+  // ✍️ Firma
+  const startDrawing = () => drawing = true;
+  const stopDrawing = () => drawing = false;
 
   const draw = (e) => {
     if (!drawing) return;
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
@@ -46,7 +48,6 @@ export default function Home() {
 
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
-    ctx.strokeStyle = "black";
 
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -59,9 +60,9 @@ export default function Home() {
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  // 📸 COMPRIMIR IMAGEN
+  // 📸 Reducir imagen (SOLUCIÓN ERROR)
   const reducirImagen = (file) => {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const reader = new FileReader();
       reader.onload = (event) => {
         const img = new Image();
@@ -76,6 +77,7 @@ export default function Home() {
           canvas.height = img.height * scale;
 
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
           resolve(canvas.toDataURL("image/jpeg", 0.6));
         };
         img.src = event.target.result;
@@ -92,12 +94,13 @@ export default function Home() {
     setImagen(imgReducida);
   };
 
-  // 💾 GUARDAR
+  // 💾 Guardar
   const handleGuardar = async () => {
     try {
+
       const firma = canvasRef.current.toDataURL();
 
-      const nuevaOrden = {
+      await addDoc(collection(db, "orders"), {
         nombre,
         telefono,
         dispositivo,
@@ -107,10 +110,8 @@ export default function Home() {
         fecha: new Date().toLocaleDateString(),
         hora: new Date().toLocaleTimeString(),
         imagen: imagen || null,
-        firma,
-      };
-
-      await addDoc(collection(db, "orders"), nuevaOrden);
+        firma
+      });
 
       alert("Guardado correctamente");
 
@@ -135,27 +136,25 @@ export default function Home() {
     limpiarFirma();
   };
 
-  // ❌ ELIMINAR
+  // ❌ Eliminar
   const eliminarOrden = async (id) => {
     await deleteDoc(doc(db, "orders", id));
     loadOrders();
   };
 
-  // 🔄 CAMBIAR ESTADO
+  // 🔄 Estado
   const cambiarEstado = async (id, estado) => {
     await updateDoc(doc(db, "orders", id), { estado });
     loadOrders();
   };
 
-  // 📲 WHATSAPP
-  const enviarWhatsApp = (orden) => {
-    const mensaje = `Hola ${orden.nombre}, tu dispositivo ${orden.dispositivo} está en estado: ${orden.estado}`;
-    window.open(`https://wa.me/${orden.telefono}?text=${encodeURIComponent(mensaje)}`);
+  // 📲 WhatsApp
+  const enviarWhatsApp = (o) => {
+    const msg = `Hola ${o.nombre}, tu ${o.dispositivo} está en estado: ${o.estado}`;
+    window.open(`https://wa.me/${o.telefono}?text=${encodeURIComponent(msg)}`);
   };
 
-  // 📊 FILTROS
-  const getByEstado = (estado) =>
-    orders.filter((o) => o.estado === estado);
+  const estados = ["Recibido", "Pendiente", "Recambio", "Finalizado"];
 
   return (
     <div style={{ padding: 20 }}>
@@ -163,11 +162,11 @@ export default function Home() {
 
       {/* FORMULARIO */}
       <div>
-        <input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-        <input placeholder="Teléfono" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
-        <input placeholder="Dispositivo" value={dispositivo} onChange={(e) => setDispositivo(e.target.value)} />
-        <input placeholder="Problema" value={problema} onChange={(e) => setProblema(e.target.value)} />
-        <input placeholder="Precio" value={precio} onChange={(e) => setPrecio(e.target.value)} />
+        <input placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} />
+        <input placeholder="Teléfono" value={telefono} onChange={e => setTelefono(e.target.value)} />
+        <input placeholder="Dispositivo" value={dispositivo} onChange={e => setDispositivo(e.target.value)} />
+        <input placeholder="Problema" value={problema} onChange={e => setProblema(e.target.value)} />
+        <input placeholder="Precio" value={precio} onChange={e => setPrecio(e.target.value)} />
 
         <br /><br />
 
@@ -175,7 +174,6 @@ export default function Home() {
 
         <br /><br />
 
-        {/* FIRMA */}
         <canvas
           ref={canvasRef}
           width={300}
@@ -201,29 +199,28 @@ export default function Home() {
 
       {/* COLUMNAS */}
       <div style={{ display: "flex", gap: 20 }}>
-        {["Recibido", "Pendiente", "Recambio", "Finalizado"].map((estado) => (
+        {estados.map((estado) => (
           <div key={estado} style={{ flex: 1 }}>
             <h3>{estado}</h3>
 
-            {getByEstado(estado).map((o) => (
-              <div key={o.id} style={{ border: "1px solid #ccc", margin: 5, padding: 5 }}>
-                <strong>{o.nombre}</strong><br />
-                {o.dispositivo}<br />
-                {o.problema}<br />
+            {orders
+              .filter(o => o.estado === estado)
+              .map(o => (
+                <div key={o.id} style={{ border: "1px solid #ccc", margin: 5, padding: 5 }}>
+                  <strong>{o.nombre}</strong><br />
+                  {o.dispositivo}<br />
+                  {o.problema}<br />
 
-                <select value={o.estado} onChange={(e) => cambiarEstado(o.id, e.target.value)}>
-                  <option>Recibido</option>
-                  <option>Pendiente</option>
-                  <option>Recambio</option>
-                  <option>Finalizado</option>
-                </select>
+                  <select value={o.estado} onChange={(e) => cambiarEstado(o.id, e.target.value)}>
+                    {estados.map(e => <option key={e}>{e}</option>)}
+                  </select>
 
-                <br />
+                  <br />
 
-                <button onClick={() => enviarWhatsApp(o)}>WhatsApp</button>
-                <button onClick={() => eliminarOrden(o.id)}>Eliminar</button>
-              </div>
-            ))}
+                  <button onClick={() => enviarWhatsApp(o)}>WhatsApp</button>
+                  <button onClick={() => eliminarOrden(o.id)}>Eliminar</button>
+                </div>
+              ))}
           </div>
         ))}
       </div>

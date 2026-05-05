@@ -35,12 +35,12 @@ export default function Page() {
   const [form, setForm] = useState({});
   const [file, setFile] = useState(null);
   const [busqueda, setBusqueda] = useState("");
-  const [ordenImprimir, setOrdenImprimir] = useState(null);
+  const [ver, setVer] = useState(null);
   const canvasRef = useRef(null);
 
   const estados = ["Recibido", "Pendiente", "Recambio", "Finalizado"];
 
-  // 🔄 DATOS
+  // 🔄 CARGAR DATOS
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "ordenes"), (snap) => {
       setOrdenes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -73,11 +73,10 @@ export default function Page() {
   }, []);
 
   // 💰 PANEL
-  const total = ordenes.reduce((a, o) => a + Number(o.presupuesto || 0), 0);
-
+  const total = ordenes.reduce((a, o) => a + (Number(o.presupuesto) || 0), 0);
   const finalizado = ordenes
     .filter((o) => o.estado === "Finalizado")
-    .reduce((a, o) => a + Number(o.presupuesto || 0), 0);
+    .reduce((a, o) => a + (Number(o.presupuesto) || 0), 0);
 
   const pendiente = total - finalizado;
 
@@ -101,7 +100,7 @@ export default function Page() {
     const firma = canvasRef.current.toDataURL();
     const ahora = new Date();
 
-    const data = {
+    const nueva = {
       ...form,
       foto: fotoURL,
       firma,
@@ -111,21 +110,37 @@ export default function Page() {
       estado: "Recibido",
     };
 
-    await addDoc(collection(db, "ordenes"), data);
+    await addDoc(collection(db, "ordenes"), nueva);
 
-    setOrdenImprimir(data);
-    setTimeout(() => window.print(), 200);
+    // 🖨️ IMPRIMIR
+    setTimeout(() => window.print(), 300);
 
     setForm({});
     setFile(null);
     canvasRef.current.getContext("2d").clearRect(0, 0, 300, 120);
   };
 
+  // 🔄 CAMBIAR ESTADO
+  const cambiarEstado = async (id, estado) => {
+    await updateDoc(doc(db, "ordenes", id), { estado });
+  };
+
+  // ❌ ELIMINAR
+  const eliminar = async (id) => {
+    if (confirm("¿Eliminar orden?")) {
+      await deleteDoc(doc(db, "ordenes", id));
+    }
+  };
+
   // 📱 WHATSAPP
   const enviarWhatsApp = (o) => {
-    const msg = `Orden ${o.numero} - ${o.estado}`;
+    const msg = `Orden ${o.numero}\nEstado: ${o.estado}\nDispositivo: ${o.dispositivo}`;
     window.open(`https://wa.me/34${o.telefono}?text=${encodeURIComponent(msg)}`);
   };
+
+  // 🎯 AGRUPAR
+  const porEstado = (estado) =>
+    filtradas.filter((o) => o.estado === estado);
 
   return (
     <div style={{ padding: 20 }}>
@@ -133,12 +148,12 @@ export default function Page() {
 
       {/* PANEL */}
       <div style={{ display: "flex", gap: 20 }}>
-        <div>💰 Total: {total}€</div>
-        <div>✅ Finalizado: {finalizado}€</div>
-        <div>⏳ Pendiente: {pendiente}€</div>
+        <div>💰 {total}€</div>
+        <div>✅ {finalizado}€</div>
+        <div>⏳ {pendiente}€</div>
       </div>
 
-      <br/>
+      <br />
 
       {/* BUSCADOR */}
       <input
@@ -146,7 +161,7 @@ export default function Page() {
         onChange={(e) => setBusqueda(e.target.value)}
       />
 
-      <br/><br/>
+      <br /><br />
 
       {/* FORM */}
       <div style={{ background: "#eee", padding: 20 }}>
@@ -156,55 +171,74 @@ export default function Page() {
         <input placeholder="Problema" onChange={(e)=>setForm({...form,problema:e.target.value})}/>
         <input placeholder="€" onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
 
-        {/* 📸 FOTO */}
-        <br/><br/>
+        <br /><br />
+
         <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
 
-        {/* ✍️ FIRMA */}
-        <br/><br/>
+        <br /><br />
+
         <canvas ref={canvasRef} width={300} height={120} style={{border:"2px solid black"}}/>
 
-        <br/><br/>
+        <br /><br />
 
         <button onClick={guardar}>Guardar + imprimir</button>
       </div>
 
-      {/* LISTADO */}
-      {filtradas.map(o=>(
-        <div key={o.id} style={{border:"1px solid #ccc", margin:10, padding:10}}>
-          #{o.numero} - {o.nombre}
+      <br />
 
-          <br/>
+      {/* COLUMNAS */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+        {estados.map((estado) => (
+          <div key={estado} style={{ background: "#f5f5f5", padding: 10 }}>
+            <h3>{estado}</h3>
 
-          {o.foto && (
-            <img src={o.foto} width="120" />
-          )}
+            {porEstado(estado).map((o) => (
+              <div key={o.id} style={{ border: "1px solid #ccc", margin: 5, padding: 5 }}>
+                #{o.numero}
 
-          <br/>
+                <br />
 
-          <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
-        </div>
-      ))}
+                <button onClick={()=>setVer(o)}>Ver</button>
+                <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
+                <button onClick={()=>eliminar(o.id)}>Eliminar</button>
 
-      {/* PRINT */}
-      {ordenImprimir && (
-        <div className="print">
-          <h2>Ink-Mobile</h2>
-          <p>Orden #{ordenImprimir.numero}</p>
-          <p>{ordenImprimir.nombre}</p>
+                <br />
 
-          {ordenImprimir.foto && (
-            <img src={ordenImprimir.foto} width="200"/>
-          )}
+                <select
+                  value={o.estado}
+                  onChange={(e)=>cambiarEstado(o.id,e.target.value)}
+                >
+                  {estados.map((e)=><option key={e}>{e}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* MODAL VER */}
+      {ver && (
+        <div style={{
+          position:"fixed",
+          top:0,left:0,right:0,bottom:0,
+          background:"rgba(0,0,0,0.5)"
+        }}>
+          <div style={{background:"white",margin:"50px auto",padding:20,width:300}}>
+            <h3>Orden #{ver.numero}</h3>
+
+            <p>{ver.nombre}</p>
+            <p>{ver.telefono}</p>
+            <p>{ver.dispositivo}</p>
+            <p>{ver.problema}</p>
+
+            {ver.foto && <img src={ver.foto} width="100%" />}
+
+            <br />
+
+            <button onClick={()=>setVer(null)}>Cerrar</button>
+          </div>
         </div>
       )}
-
-      <style>{`
-        @media print {
-          body * { visibility:hidden }
-          .print, .print * { visibility:visible }
-        }
-      `}</style>
     </div>
   );
 }

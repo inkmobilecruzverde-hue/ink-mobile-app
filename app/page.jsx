@@ -11,27 +11,36 @@ import {
   doc,
   deleteDoc,
 } from "firebase/firestore";
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
 
-// 🔥 CONFIG
+// 🔥 FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyCQUkrs1QJFmbrAQqt_dRLmgHfU3Zp-c2Y",
   authDomain: "ink-mobile-5ee6a.firebaseapp.com",
   projectId: "ink-mobile-5ee6a",
+  storageBucket: "ink-mobile-5ee6a.appspot.com",
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 export default function Page() {
   const [ordenes, setOrdenes] = useState([]);
   const [form, setForm] = useState({});
-  const [editId, setEditId] = useState(null);
+  const [file, setFile] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
   const [ordenImprimir, setOrdenImprimir] = useState(null);
   const canvasRef = useRef(null);
 
   const estados = ["Recibido", "Pendiente", "Recambio", "Finalizado"];
 
-  // 🔄 CARGA
+  // 🔄 DATOS
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "ordenes"), (snap) => {
       setOrdenes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -39,13 +48,13 @@ export default function Page() {
     return () => unsub();
   }, []);
 
-  // ✍️ FIRMA SIMPLE
+  // ✍️ FIRMA
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     let draw = false;
 
-    const start = (e) => {
+    const start = () => {
       draw = true;
       ctx.beginPath();
     };
@@ -63,108 +72,119 @@ export default function Page() {
     window.addEventListener("mouseup", stop);
   }, []);
 
-  // 💾 GUARDAR + IMPRIMIR
+  // 💰 PANEL
+  const total = ordenes.reduce((a, o) => a + Number(o.presupuesto || 0), 0);
+
+  const finalizado = ordenes
+    .filter((o) => o.estado === "Finalizado")
+    .reduce((a, o) => a + Number(o.presupuesto || 0), 0);
+
+  const pendiente = total - finalizado;
+
+  // 🔍 FILTRO
+  const filtradas = ordenes.filter(
+    (o) =>
+      o.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+      o.telefono?.includes(busqueda)
+  );
+
+  // 💾 GUARDAR
   const guardar = async () => {
+    let fotoURL = "";
+
+    if (file) {
+      const storageRef = ref(storage, "ordenes/" + Date.now());
+      await uploadBytes(storageRef, file);
+      fotoURL = await getDownloadURL(storageRef);
+    }
+
     const firma = canvasRef.current.toDataURL();
     const ahora = new Date();
 
     const data = {
       ...form,
+      foto: fotoURL,
       firma,
       fecha: ahora.toLocaleDateString(),
       hora: ahora.toLocaleTimeString(),
-      numero: editId ? form.numero : Date.now(),
-      estado: form.estado || "Recibido",
+      numero: Date.now(),
+      estado: "Recibido",
     };
 
-    if (editId) {
-      await updateDoc(doc(db, "ordenes", editId), data);
-      setEditId(null);
-    } else {
-      await addDoc(collection(db, "ordenes"), data);
-    }
+    await addDoc(collection(db, "ordenes"), data);
 
     setOrdenImprimir(data);
-
     setTimeout(() => window.print(), 200);
 
     setForm({});
+    setFile(null);
     canvasRef.current.getContext("2d").clearRect(0, 0, 300, 120);
   };
 
-  // 🧠 ACCIONES
-  const editar = (o) => {
-    setForm(o);
-    setEditId(o.id);
-  };
-
-  const eliminar = async (id) => {
-    if (confirm("Eliminar orden?")) {
-      await deleteDoc(doc(db, "ordenes", id));
-    }
-  };
-
-  const cambiarEstado = async (id, estado) => {
-    await updateDoc(doc(db, "ordenes", id), { estado });
-  };
-
+  // 📱 WHATSAPP
   const enviarWhatsApp = (o) => {
     const msg = `Orden ${o.numero} - ${o.estado}`;
     window.open(`https://wa.me/34${o.telefono}?text=${encodeURIComponent(msg)}`);
   };
 
-  // 💰 PANEL SIMPLE
-  const total = ordenes.reduce((a, o) => a + Number(o.presupuesto || 0), 0);
-
   return (
     <div style={{ padding: 20 }}>
-      <h1>Ink-Mobile PRO</h1>
+      <h1>🏪 Ink-Mobile PRO</h1>
 
-      <h3>💰 Total generado: {total}€</h3>
+      {/* PANEL */}
+      <div style={{ display: "flex", gap: 20 }}>
+        <div>💰 Total: {total}€</div>
+        <div>✅ Finalizado: {finalizado}€</div>
+        <div>⏳ Pendiente: {pendiente}€</div>
+      </div>
+
+      <br/>
+
+      {/* BUSCADOR */}
+      <input
+        placeholder="Buscar cliente..."
+        onChange={(e) => setBusqueda(e.target.value)}
+      />
+
+      <br/><br/>
 
       {/* FORM */}
       <div style={{ background: "#eee", padding: 20 }}>
-        <input placeholder="Nombre" value={form.nombre || ""} onChange={(e)=>setForm({...form,nombre:e.target.value})}/>
-        <input placeholder="Teléfono" value={form.telefono || ""} onChange={(e)=>setForm({...form,telefono:e.target.value})}/>
-        <input placeholder="Dispositivo" value={form.dispositivo || ""} onChange={(e)=>setForm({...form,dispositivo:e.target.value})}/>
-        <input placeholder="Problema" value={form.problema || ""} onChange={(e)=>setForm({...form,problema:e.target.value})}/>
-        <input placeholder="€" value={form.presupuesto || ""} onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
+        <input placeholder="Nombre" onChange={(e)=>setForm({...form,nombre:e.target.value})}/>
+        <input placeholder="Teléfono" onChange={(e)=>setForm({...form,telefono:e.target.value})}/>
+        <input placeholder="Dispositivo" onChange={(e)=>setForm({...form,dispositivo:e.target.value})}/>
+        <input placeholder="Problema" onChange={(e)=>setForm({...form,problema:e.target.value})}/>
+        <input placeholder="€" onChange={(e)=>setForm({...form,presupuesto:e.target.value})}/>
 
-        <canvas ref={canvasRef} width={300} height={120} style={{border:"1px solid black"}}/>
+        {/* 📸 FOTO */}
+        <br/><br/>
+        <input type="file" onChange={(e)=>setFile(e.target.files[0])}/>
+
+        {/* ✍️ FIRMA */}
+        <br/><br/>
+        <canvas ref={canvasRef} width={300} height={120} style={{border:"2px solid black"}}/>
 
         <br/><br/>
-        <button onClick={guardar}>
-          {editId ? "Actualizar + imprimir" : "Guardar + imprimir"}
-        </button>
+
+        <button onClick={guardar}>Guardar + imprimir</button>
       </div>
 
-      {/* COLUMNAS */}
-      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-        {estados.map(e => (
-          <div key={e} style={{ flex:1, background:"#f5f5f5", padding:10 }}>
-            <h3>{e}</h3>
+      {/* LISTADO */}
+      {filtradas.map(o=>(
+        <div key={o.id} style={{border:"1px solid #ccc", margin:10, padding:10}}>
+          #{o.numero} - {o.nombre}
 
-            {ordenes.filter(o=>o.estado===e).map(o=>(
-              <div key={o.id} style={{ background:"#fff", margin:5, padding:5 }}>
-                #{o.numero}<br/>
-                {o.nombre}
+          <br/>
 
-                <br/>
+          {o.foto && (
+            <img src={o.foto} width="120" />
+          )}
 
-                <button onClick={()=>editar(o)}>Editar</button>
-                <button onClick={()=>eliminar(o.id)}>Eliminar</button>
-                <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
+          <br/>
 
-                <br/>
-
-                <select value={o.estado} onChange={(ev)=>cambiarEstado(o.id,ev.target.value)}>
-                  {estados.map(s=><option key={s}>{s}</option>)}
-                </select>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+          <button onClick={()=>enviarWhatsApp(o)}>WhatsApp</button>
+        </div>
+      ))}
 
       {/* PRINT */}
       {ordenImprimir && (
@@ -172,8 +192,10 @@ export default function Page() {
           <h2>Ink-Mobile</h2>
           <p>Orden #{ordenImprimir.numero}</p>
           <p>{ordenImprimir.nombre}</p>
-          <p>{ordenImprimir.dispositivo}</p>
-          <p>{ordenImprimir.problema}</p>
+
+          {ordenImprimir.foto && (
+            <img src={ordenImprimir.foto} width="200"/>
+          )}
         </div>
       )}
 
@@ -181,7 +203,6 @@ export default function Page() {
         @media print {
           body * { visibility:hidden }
           .print, .print * { visibility:visible }
-          .print { position:absolute; top:0 }
         }
       `}</style>
     </div>

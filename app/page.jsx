@@ -35,11 +35,12 @@ export default function Page() {
   const [form, setForm] = useState({});
   const [file, setFile] = useState(null);
   const [ver, setVer] = useState(null);
+  const [printData, setPrintData] = useState(null);
   const canvasRef = useRef(null);
 
   const estados = ["Recibido", "Pendiente", "Recambio", "Finalizado"];
 
-  // 🔄 CARGAR
+  // 🔄 DATOS
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "ordenes"), (snap) => {
       setOrdenes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -73,9 +74,13 @@ export default function Page() {
       let fotoURL = "";
 
       if (file) {
-        const storageRef = ref(storage, "ordenes/" + Date.now());
-        await uploadBytes(storageRef, file);
-        fotoURL = await getDownloadURL(storageRef);
+        try {
+          const storageRef = ref(storage, "ordenes/" + Date.now());
+          await uploadBytes(storageRef, file);
+          fotoURL = await getDownloadURL(storageRef);
+        } catch (e) {
+          console.log("Error subiendo imagen:", e);
+        }
       }
 
       const nueva = {
@@ -90,7 +95,9 @@ export default function Page() {
 
       await addDoc(collection(db, "ordenes"), nueva);
 
-      setTimeout(() => window.print(), 200);
+      setPrintData(nueva);
+
+      setTimeout(() => window.print(), 300);
 
       setForm({});
       setFile(null);
@@ -109,7 +116,7 @@ export default function Page() {
 
   // ❌ ELIMINAR
   const eliminar = async (id) => {
-    if (confirm("¿Eliminar?")) {
+    if (confirm("¿Eliminar orden?")) {
       await deleteDoc(doc(db, "ordenes", id));
     }
   };
@@ -120,7 +127,7 @@ export default function Page() {
     window.open(`https://wa.me/34${o.telefono}?text=${encodeURIComponent(msg)}`);
   };
 
-  // 🎯 FILTRAR POR ESTADO
+  // 🎯 AGRUPAR
   const porEstado = (estado) =>
     ordenes.filter((o) => o.estado === estado);
 
@@ -190,20 +197,50 @@ export default function Page() {
         }}>
           <div style={{background:"white",margin:"50px auto",padding:20,width:300}}>
             <h3>Orden #{ver.numero}</h3>
-
-            <p><b>Nombre:</b> {ver.nombre}</p>
-            <p><b>Teléfono:</b> {ver.telefono}</p>
-            <p><b>Dispositivo:</b> {ver.dispositivo}</p>
-            <p><b>Problema:</b> {ver.problema}</p>
+            <p>{ver.nombre}</p>
+            <p>{ver.telefono}</p>
+            <p>{ver.dispositivo}</p>
+            <p>{ver.problema}</p>
 
             {ver.foto && <img src={ver.foto} width="100%" />}
-
-            <br />
 
             <button onClick={()=>setVer(null)}>Cerrar</button>
           </div>
         </div>
       )}
+
+      {/* 🖨️ PRINT SOLO ORDEN */}
+      {printData && (
+        <div id="print">
+          <h2>Ink-Mobile</h2>
+          <p>Orden #{printData.numero}</p>
+          <p>{printData.nombre}</p>
+          <p>{printData.dispositivo}</p>
+          <p>{printData.problema}</p>
+          <p>{printData.fecha} - {printData.hora}</p>
+
+          {printData.foto && <img src={printData.foto} width="200"/>}
+        </div>
+      )}
+
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+
+          #print, #print * {
+            visibility: visible;
+          }
+
+          #print {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,187 +1,229 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  onSnapshot,
-  deleteDoc,
-  doc,
-} from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: "TU_API_KEY",
-  authDomain: "ink-mobile-5ee6a.firebaseapp.com",
-  projectId: "ink-mobile-5ee6a",
-  storageBucket: "ink-mobile-5ee6a.appspot.com",
-  messagingSenderId: "174258192559",
-  appId: "1:174258192559:web:811e204b406c68199c945a",
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+import { useState, useEffect, useRef } from "react";
+import { db } from "../lib/firebase";
+import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
 
 export default function Home() {
   const [orders, setOrders] = useState([]);
-  const [form, setForm] = useState({});
-  const [image, setImage] = useState(null);
+
+  const [nombre, setNombre] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [dispositivo, setDispositivo] = useState("");
+  const [problema, setProblema] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [imagen, setImagen] = useState(null);
 
   const canvasRef = useRef(null);
-  const printRef = useRef(null);
+  let drawing = false;
 
-  // 🔥 Cargar datos
+  // 🔥 CARGAR ÓRDENES
+  const loadOrders = async () => {
+    const querySnapshot = await getDocs(collection(db, "orders"));
+    const data = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setOrders(data);
+  };
+
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "orders"), (snapshot) => {
-      setOrders(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
-    return () => unsub();
+    loadOrders();
   }, []);
 
-  // 🖊️ Firma
-  useEffect(() => {
+  // 🖊 FIRMA
+  const startDrawing = () => (drawing = true);
+  const stopDrawing = () => (drawing = false);
+
+  const draw = (e) => {
+    if (!drawing) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    let drawing = false;
 
-    const start = (e) => {
-      drawing = true;
-      ctx.beginPath();
-      ctx.moveTo(e.offsetX, e.offsetY);
-    };
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
 
-    const draw = (e) => {
-      if (!drawing) return;
-      ctx.lineTo(e.offsetX, e.offsetY);
-      ctx.stroke();
-    };
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "black";
 
-    const stop = () => (drawing = false);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
 
-    canvas.addEventListener("mousedown", start);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseup", stop);
+  const limpiarFirma = () => {
+    const canvas = canvasRef.current;
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  };
 
-    return () => {
-      canvas.removeEventListener("mousedown", start);
-      canvas.removeEventListener("mousemove", draw);
-      canvas.removeEventListener("mouseup", stop);
-    };
-  }, []);
+  // 📸 COMPRIMIR IMAGEN
+  const reducirImagen = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
 
-  // 📸 Convertir imagen a base64 (SOLUCIÓN ERROR)
-  const handleImage = (e) => {
+          const maxWidth = 400;
+          const scale = maxWidth / img.width;
+
+          canvas.width = maxWidth;
+          canvas.height = img.height * scale;
+
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.6));
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImagen = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImage(reader.result);
-    };
-    reader.readAsDataURL(file);
+    const imgReducida = await reducirImagen(file);
+    setImagen(imgReducida);
   };
 
-  // 💾 Guardar
-  const saveOrder = async () => {
+  // 💾 GUARDAR
+  const handleGuardar = async () => {
     try {
-      await addDoc(collection(db, "orders"), {
-        ...form,
+      const firma = canvasRef.current.toDataURL();
+
+      const nuevaOrden = {
+        nombre,
+        telefono,
+        dispositivo,
+        problema,
+        precio,
         estado: "Recibido",
-        fecha: new Date().toLocaleString(),
-        firma: canvasRef.current.toDataURL(),
-        imagen: image || null,
-      });
+        fecha: new Date().toLocaleDateString(),
+        hora: new Date().toLocaleTimeString(),
+        imagen: imagen || null,
+        firma,
+      };
 
-      printOrder();
+      await addDoc(collection(db, "orders"), nuevaOrden);
 
-      setForm({});
-      setImage(null);
-    } catch (err) {
+      alert("Guardado correctamente");
+
+      limpiarFormulario();
+      loadOrders();
+
+      setTimeout(() => window.print(), 500);
+
+    } catch (error) {
+      console.error(error);
       alert("Error al guardar");
-      console.log(err);
     }
   };
 
-  // 🖨️ Imprimir SOLO orden
-  const printOrder = () => {
-    const content = printRef.current.innerHTML;
-    const win = window.open("", "", "width=800,height=600");
-
-    win.document.write(`
-      <html>
-        <head>
-          <title>Orden</title>
-        </head>
-        <body>
-          ${content}
-        </body>
-      </html>
-    `);
-
-    win.document.close();
-    win.print();
+  const limpiarFormulario = () => {
+    setNombre("");
+    setTelefono("");
+    setDispositivo("");
+    setProblema("");
+    setPrecio("");
+    setImagen(null);
+    limpiarFirma();
   };
 
-  // ❌ Eliminar
-  const remove = async (id) => {
+  // ❌ ELIMINAR
+  const eliminarOrden = async (id) => {
     await deleteDoc(doc(db, "orders", id));
+    loadOrders();
   };
 
-  // 📲 WhatsApp
-  const sendWhatsApp = (o) => {
-    const msg = `Orden ${o.nombre} - ${o.dispositivo} - ${o.problema}`;
-    window.open(`https://wa.me/34${o.telefono}?text=${encodeURIComponent(msg)}`);
+  // 🔄 CAMBIAR ESTADO
+  const cambiarEstado = async (id, estado) => {
+    await updateDoc(doc(db, "orders", id), { estado });
+    loadOrders();
   };
+
+  // 📲 WHATSAPP
+  const enviarWhatsApp = (orden) => {
+    const mensaje = `Hola ${orden.nombre}, tu dispositivo ${orden.dispositivo} está en estado: ${orden.estado}`;
+    window.open(`https://wa.me/${orden.telefono}?text=${encodeURIComponent(mensaje)}`);
+  };
+
+  // 📊 FILTROS
+  const getByEstado = (estado) =>
+    orders.filter((o) => o.estado === estado);
 
   return (
     <div style={{ padding: 20 }}>
       <h1>🔧 Ink-Mobile PRO</h1>
 
-      {/* FORM */}
-      <input placeholder="Nombre" onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-      <input placeholder="DNI" onChange={(e) => setForm({ ...form, dni: e.target.value })} />
-      <input placeholder="Teléfono" onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
-      <input placeholder="Dispositivo" onChange={(e) => setForm({ ...form, dispositivo: e.target.value })} />
-      <input placeholder="Problema" onChange={(e) => setForm({ ...form, problema: e.target.value })} />
-      <input placeholder="Precio" onChange={(e) => setForm({ ...form, precio: e.target.value })} />
+      {/* FORMULARIO */}
+      <div>
+        <input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <input placeholder="Teléfono" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+        <input placeholder="Dispositivo" value={dispositivo} onChange={(e) => setDispositivo(e.target.value)} />
+        <input placeholder="Problema" value={problema} onChange={(e) => setProblema(e.target.value)} />
+        <input placeholder="Precio" value={precio} onChange={(e) => setPrecio(e.target.value)} />
 
-      <input type="file" onChange={handleImage} />
+        <br /><br />
 
-      <canvas ref={canvasRef} width={300} height={150} style={{ border: "1px solid black" }} />
+        <input type="file" onChange={handleImagen} />
 
-      <button onClick={saveOrder}>Guardar + imprimir</button>
+        <br /><br />
 
-      {/* PRINT AREA */}
-      <div ref={printRef} style={{ display: "none" }}>
-        <h2>Ink-Mobile</h2>
-        <p>{form.nombre}</p>
-        <p>{form.dispositivo}</p>
-        <p>{form.problema}</p>
+        {/* FIRMA */}
+        <canvas
+          ref={canvasRef}
+          width={300}
+          height={150}
+          style={{ border: "1px solid black" }}
+          onMouseDown={startDrawing}
+          onMouseUp={stopDrawing}
+          onMouseMove={draw}
+          onTouchStart={startDrawing}
+          onTouchEnd={stopDrawing}
+          onTouchMove={draw}
+        />
 
-        {image && <img src={image} width={200} />}
+        <br />
+        <button onClick={limpiarFirma}>Limpiar firma</button>
 
-        <img src={canvasRef.current?.toDataURL()} width={200} />
+        <br /><br />
+
+        <button onClick={handleGuardar}>Guardar + imprimir</button>
       </div>
 
+      <hr />
+
       {/* COLUMNAS */}
-      <div style={{ display: "flex", gap: 20, marginTop: 30 }}>
+      <div style={{ display: "flex", gap: 20 }}>
         {["Recibido", "Pendiente", "Recambio", "Finalizado"].map((estado) => (
           <div key={estado} style={{ flex: 1 }}>
             <h3>{estado}</h3>
 
-            {orders
-              .filter((o) => o.estado === estado)
-              .map((o) => (
-                <div key={o.id}>
-                  #{o.id}
-                  <br />
-                  {o.nombre}
-                  <br />
-                  <button onClick={() => sendWhatsApp(o)}>WhatsApp</button>
-                  <button onClick={() => remove(o.id)}>Eliminar</button>
-                </div>
-              ))}
+            {getByEstado(estado).map((o) => (
+              <div key={o.id} style={{ border: "1px solid #ccc", margin: 5, padding: 5 }}>
+                <strong>{o.nombre}</strong><br />
+                {o.dispositivo}<br />
+                {o.problema}<br />
+
+                <select value={o.estado} onChange={(e) => cambiarEstado(o.id, e.target.value)}>
+                  <option>Recibido</option>
+                  <option>Pendiente</option>
+                  <option>Recambio</option>
+                  <option>Finalizado</option>
+                </select>
+
+                <br />
+
+                <button onClick={() => enviarWhatsApp(o)}>WhatsApp</button>
+                <button onClick={() => eliminarOrden(o.id)}>Eliminar</button>
+              </div>
+            ))}
           </div>
         ))}
       </div>
